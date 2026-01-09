@@ -1,0 +1,30 @@
+# .gitignore
+
+# 系統與環境變數 (絕對不能上傳)
+.env
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+
+# 嘉信 Token (絕對不能上傳)
+token_temp.json
+*.json
+!mock_data/*.json  # (除了 mock_data 裡的 json 可以上傳)
+
+# Node.js / 前端
+node_modules/
+dist/
+.output/
+
+# 資料庫 (選擇性，通常不備份二進位檔)
+*.db
+*.sqlite3
+
+Add-Content .gitignore "`r`n*.rar"
+
+# 忽略備份目錄
+BROKEN/

@@ -1,0 +1,16 @@
+# Roo Code Custom Rules
+
+1.  **Thinking Process**:
+    - Before writing code, break down the user's request into the smallest possible actionable steps.
+    - If a task involves editing more than 2 files or 50 lines of logic, BREAK IT DOWN into separate steps.
+
+2.  **Task Management**:
+    - Updates to `todo_progress.md` must be granular.
+    - Never mark a task as "Done" until it is tested or verified.
+
+3.  **Code Quality**:
+    - Prefer small, focused commits/edits over massive changes.
+    - Always verify the "Import" paths after moving files.
+
+4.  **Language**:
+    - Communicate in Traditional Chinese (繁體中文).
