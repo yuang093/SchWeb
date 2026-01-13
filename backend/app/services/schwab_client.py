@@ -360,19 +360,17 @@ class SchwabClient:
                 from app.models.persistence import Dividend, TradeHistory
                 for tx in transactions:
                     tx_type = tx.get("type")
-                    tx_id = tx.get("activityId") # 用於排重，但模型目前沒這欄位，先用日期+符號+金額
+                    # activityId 可用於排重，雖然模型目前沒存 tx_id
                     tx_date_str = tx.get("settlementDate") or tx.get("tradeDate")
                     if not tx_date_str: continue
                     tx_date = datetime.strptime(tx_date_str[:10], "%Y-%m-%d").date()
                     
                     # 處理股息 (包含現金股息與再投入)
-                    # 根據使用者需求：合併計算 Cash Dividend 與 DRIP (Reinvest)
                     desc = tx.get("description", "")
                     is_div_type = tx_type == "DIVIDEND_OR_INTEREST"
                     is_div_desc = any(k in desc for k in ["Div", "Dividend", "Reinvest", "DRIP"])
                     
                     if is_div_type or is_div_desc:
-                        # 提取金額並取絕對值 (應對再投入可能記為負值的情況)
                         amount = 0
                         symbol = "CASH"
                         
@@ -406,15 +404,67 @@ class SchwabClient:
                                     description=desc
                                 ))
 
-                    # 處理賣出 (已實現損益)
-                    elif tx_type == "TRADE" and tx.get("transactionItem", {}).get("instruction") == "SELL":
-                        item = tx.get("transactionItem", {})
-                        symbol = item.get("instrument", {}).get("symbol", "UNKNOWN")
-                        qty = float(item.get("amount") or 0)
-                        price = float(item.get("price") or 0)
-                        # 注意：Schwab API 的交易紀錄可能不直接提供當時的平均成本
-                        # 這裡的 realized_pnl 計算可能需要更複雜的邏輯，或者從 description 提取
-                        # 先簡單記錄交易，之後再優化計算
+                    # 處理交易 (買入/賣出)
+                    elif tx_type == "TRADE":
+                        # 統一處理不同格式的交易項目 (某些 API 回傳 transactionItem, 某些回傳 transferItems)
+                        items = []
+                        if "transactionItem" in tx:
+                            items.append(tx["transactionItem"])
+                        if "transferItems" in tx:
+                            for t_item in tx["transferItems"]:
+                                # 排除貨幣項目，只保留證券項目
+                                if t_item.get("instrument", {}).get("assetType") not in ["CURRENCY", "CASH"]:
+                                    items.append(t_item)
+                        
+                        for item in items:
+                            symbol = item.get("instrument", {}).get("symbol", "UNKNOWN")
+                            qty = float(item.get("amount") or 0)
+                            price = float(item.get("price") or 0)
+                            
+                            # 判定方向 (SELL/BUY)
+                            # 1. 優先看 instruction
+                            instruction = item.get("instruction")
+                            # 2. 若無 instruction，看 positionEffect
+                            if not instruction:
+                                effect = item.get("positionEffect")
+                                if effect == "CLOSING": instruction = "SELL"
+                                elif effect == "OPENING": instruction = "BUY"
+                            
+                            # 3. 最後看 netAmount 與數量的正負號 (錢進來為 SELL)
+                            if not instruction:
+                                instruction = "SELL" if tx.get("netAmount", 0) > 0 else "BUY"
+
+                            if instruction in ["SELL", "BUY"] and qty > 0:
+                                # 檢查是否已重複 (hash + date + symbol + side + qty)
+                                existing = db.query(TradeHistory).filter(
+                                    TradeHistory.account_hash == account_hash,
+                                    TradeHistory.date == tx_date,
+                                    TradeHistory.symbol == symbol,
+                                    TradeHistory.side == instruction,
+                                    TradeHistory.quantity == qty
+                                ).first()
+
+                                if not existing:
+                                    # 嘗試提取已實現損益 (某些 API 欄位可能會提供)
+                                    realized_pnl = float(tx.get("realizedPnL") or item.get("realizedPnL") or 0.0)
+                                    
+                                    # 如果 realized_pnl 為 0 且是賣出，試著從描述中找看看 (有的話)
+                                    if realized_pnl == 0 and instruction == "SELL":
+                                        match = re.search(r"Realized [^:]+:\s*([+-]?[\d,.]+)", desc)
+                                        if match:
+                                            try:
+                                                realized_pnl = float(match.group(1).replace(',', ''))
+                                            except: pass
+
+                                    db.add(TradeHistory(
+                                        account_hash=account_hash,
+                                        date=tx_date,
+                                        symbol=symbol,
+                                        side=instruction,
+                                        quantity=qty,
+                                        price=price,
+                                        realized_pnl=realized_pnl
+                                    ))
                         
                 db.commit()
             except Exception as e:

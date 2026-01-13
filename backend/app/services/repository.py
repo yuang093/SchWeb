@@ -147,8 +147,8 @@ class AccountRepository:
             total_dividends = div_query.scalar() or 0.0
             acc_summary["total_dividends"] = float(total_dividends)
 
-            # 已實現損益查詢 (增加帳戶與年份過濾)
-            pnl_query = db.query(func.sum(TradeHistory.realized_pnl)).filter(TradeHistory.date >= start_of_year)
+            # 已實現損益查詢 (改為 All-time 累計)
+            pnl_query = db.query(func.sum(TradeHistory.realized_pnl))
             if actual_hash:
                 pnl_query = pnl_query.filter(TradeHistory.account_hash == actual_hash)
                 

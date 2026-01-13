@@ -150,10 +150,11 @@ export default function Dashboard() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-4 md:p-6">
-            <NetWorthChart 
-              data={history?.history || []} 
+            <NetWorthChart
+              data={history?.history || []}
               accounts={history?.accounts || []}
-              loading={isHistoryLoading} 
+              selectedAccountHash={selectedAccountHash}
+              loading={isHistoryLoading}
             />
           </div>
           <div className="lg:col-span-1 h-full min-h-[350px]">

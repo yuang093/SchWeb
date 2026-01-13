@@ -12,17 +12,47 @@ function cn(...inputs: ClassValue[]) {
 interface NetWorthChartProps {
   data: HistoryPoint[];
   accounts: string[];
+  selectedAccountHash?: string;
   loading?: boolean;
 }
 
 type TimeRange = '1W' | '1M' | '3M' | '6M' | 'YTD' | '1Y' | '2Y' | 'ALL';
 
-export default function NetWorthChart({ data, accounts, loading = false }: NetWorthChartProps) {
-  const [selectedAccount, setSelectedAccount] = useState<string>('total');
+export default function NetWorthChart({ data, accounts, selectedAccountHash, loading = false }: NetWorthChartProps) {
   const [timeRange, setTimeRange] = useState<TimeRange>('ALL');
   const { isPrivacyMode, maskValue } = usePrivacy();
 
+  const activeDataKey = useMemo(() => {
+    console.log('DEBUG: NetWorthChart selectedAccountHash:', selectedAccountHash);
+    console.log('DEBUG: NetWorthChart available accounts:', accounts);
+    
+    if (!selectedAccountHash) return 'total';
+    
+    // 1. 精確匹配
+    if (accounts.includes(selectedAccountHash)) return selectedAccountHash;
+    
+    // 2. 部分匹配 (應對不同格式的 Hash)
+    const partialMatch = accounts.find(acc =>
+      acc.toLowerCase().includes(selectedAccountHash.toLowerCase()) ||
+      selectedAccountHash.toLowerCase().includes(acc.toLowerCase())
+    );
+    if (partialMatch) return partialMatch;
+
+    // 3. 回退到 Live Sync 或 Total
+    if (accounts.includes('total_sync')) return 'total_sync';
+    
+    // 4. 最終回退：如果連 total 都沒，且 data 有點，則取點中第一個非 date 的 key
+    if (!accounts.includes('total') && data.length > 0) {
+      const firstPointKeys = Object.keys(data[0]);
+      const fallbackKey = firstPointKeys.find(k => k !== 'date' && k !== 'total');
+      if (fallbackKey) return fallbackKey;
+    }
+
+    return 'total';
+  }, [selectedAccountHash, accounts, data]);
+
   const filteredData = useMemo(() => {
+    console.log('DEBUG: NetWorthChart Data Sample:', data?.[0]);
     if (!data || data.length === 0) return [];
 
     let startDate = new Date();
@@ -86,16 +116,6 @@ export default function NetWorthChart({ data, accounts, loading = false }: NetWo
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
         <div className="flex items-center gap-3">
           <h3 className="text-lg font-semibold text-white whitespace-nowrap">資產淨值走勢</h3>
-          <select 
-            value={selectedAccount}
-            onChange={(e) => setSelectedAccount(e.target.value)}
-            className="bg-slate-800 text-slate-200 text-xs border border-slate-700 rounded px-2 py-1 outline-none focus:border-blue-500 transition-colors"
-          >
-            <option value="total">總資產 (Total)</option>
-            {accounts.map(acc => (
-              <option key={acc} value={acc}>{acc}</option>
-            ))}
-          </select>
         </div>
         <div className="flex gap-1 overflow-x-auto w-full sm:w-auto pb-2 sm:pb-0">
           {timeRanges.map((range) => (
@@ -149,13 +169,15 @@ export default function NetWorthChart({ data, accounts, loading = false }: NetWo
               domain={['auto', 'auto']}
             />
             <Tooltip content={<CustomTooltip />} />
-            <Area 
-              type="monotone" 
-              dataKey={selectedAccount} 
-              stroke="#3b82f6" 
-              strokeWidth={2}
-              fillOpacity={1} 
-              fill="url(#colorValue)" 
+            <Area
+              type="monotone"
+              dataKey={activeDataKey}
+              stroke="#3b82f6"
+              connectNulls={true}
+              strokeWidth={3}
+              isAnimationActive={true}
+              fillOpacity={1}
+              fill="url(#colorValue)"
               animationDuration={800}
             />
           </AreaChart>

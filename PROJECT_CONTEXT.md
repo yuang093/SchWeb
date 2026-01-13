@@ -152,3 +152,9 @@ todo_progress.md: 拆解後的任務清單，包含 [ ] Todo, [x] Done, [-] In P
     - 資料庫變更：在 `persistence.py` 中的 `Dividend` 與 `TradeHistory` 模型新增 `account_hash` 欄位，實現多帳戶數據隔離。
     - 邏輯更新：在 `schwab_client.py` 採納「合併計算策略」，同時追蹤 `DIVIDEND_OR_INTEREST` 與描述含 "Div/DRIP" 的交易。
     - 收益統計優化：實作 `abs()` 絕對值加總以正確統計負值的再投入 (DRIP) 交易，並將查詢範圍嚴格鎖定為本年度 (YTD)，排除歷史數據干擾。
+- [2026-01-13] [Roo] 修復資產趨勢圖 (Asset History Chart) 數據顯示問題：
+    - 確認嘉信匯出的 "Balances" CSV 需為歷史紀錄格式 (Date, Amount) 才能繪製趨勢。
+    - 優化 `import_history_csv.py` 支援解析 `M/D/YYYY` 日期格式與清洗帶有 $ 符號的金額。
+    - 修改 `analytics.py` 實作 `HistoricalBalance` (舊資料) 與 `AssetHistory` (Live資料) 的合併查詢邏輯，並統一日期格式為 `YYYY-MM-DD`。
+    - 前端圖表加入 `connectNulls` 與智能 Hash 匹配，解決斷點與帳號聯動問題。
+    - 調整已實現損益 (Realized P&L) 計算為全期 (All-time) 累計。
