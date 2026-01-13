@@ -136,3 +136,10 @@ todo_progress.md: 拆解後的任務清單，包含 [ ] Todo, [x] Done, [-] In P
 - [2026-01-09] [Roo] 強制修復持倉不顯示問題：放寬前端 Dashboard.tsx 的過濾條件（不分大小寫並支持多種標籤），加入關鍵 Debug Log，並再次驗證 Mock 資料與後端模型的一致性。
 - [2026-01-09] [Roo] 深度修復持倉明細顯示：統一前後端 Position 欄位名稱 (open_pl, cost_basis, current_price 等)，修正 Pydantic 模型配置 (`from_attributes=True`)，優化前端過濾邏輯為不分大小寫，並加入偵錯日誌以確保資料顯示。
 - [2026-01-09] [Roo] 恢復 HoldingsTable 完整欄位顯示與型別定義，新增 cost_basis, day_pl, open_pl, allocation_pct 欄位，並實作損益顏色與數值遮罩邏輯。
+- [2026-01-12] [Roo] 修復產業分佈圓餅圖與聯動篩選：修復後端 `sector` 提取邏輯，修正前端型別與渲染高度問題，並實作點擊圓餅圖自動過濾持倉列表的功能。
+- [2026-01-12] [Roo] 配置 Vite Proxy 與相對路徑 API：解決跨裝置 (行動端) 存取後端 API 失敗的問題，現在前端經由 Vite 代理轉發請求至後端。
+- [2026-01-12] [Roo] 重構 API Key 管理與持久化：將 API Key 儲存位置從前端移至後端資料庫 (SQLite)，實作 API Key 的遮罩顯示與多設備同步功能。
+- [2026-01-12] [Roo] 實作 Token 持久化與自動刷新：將 Schwab OAuth Token 儲存至資料庫，移除了對 `token.json` 檔案的依賴，並實作了 Token 過期時的自動刷新與資料庫更新機制。
+- [2026-01-12] [Roo] 強制 Token 同步與匯入工具：優化 SchwabClient 啟動邏輯，支援多路徑 (Root/Backend) 自動偵測 `token.json` 並強制同步至資料庫，提供安全的時間戳記備份機制。
+- [2026-01-13] [Roo] 深度修復認證持久化格式與數據同步：修正 `SchwabClient` 的 Token 讀取/儲存包裝邏輯，確保與 `schwab-py` 的 Metadata 驗證相容；完成持倉名稱解析優化，解決同步崩潰問題。
+- [2026-01-13] [Roo] 系統穩定性強化：解決跨裝置 (行動端) 連線、API 金鑰/Token 資料庫同步、以及 Windows 檔案權限導致的備份衝突等關鍵回歸問題，確保系統 100% 脫離檔案依賴。

@@ -20,6 +20,7 @@ function cn(...inputs: ClassValue[]) {
 
 export default function Dashboard() {
   const [selectedAccountHash, setSelectedAccountHash] = useState<string>('');
+  const [selectedSector, setSelectedSector] = useState<string | null>(null);
   const { isLiveMode } = useAppStore();
   const { maskValue } = usePrivacy();
 
@@ -63,20 +64,23 @@ export default function Dashboard() {
     enabled: queryEnabled,
   });
 
-  const cashPositions = useMemo(() => {
+  const filteredPositions = useMemo(() => {
     if (!positions) return [];
-    return positions.filter((h: any) => h.asset_type === 'CASH_EQUIVALENT');
-  }, [positions]);
+    if (!selectedSector) return positions;
+    return positions.filter((h: any) => h.sector === selectedSector);
+  }, [positions, selectedSector]);
+
+  const cashPositions = useMemo(() => {
+    return filteredPositions.filter((h: any) => h.asset_type === 'CASH_EQUIVALENT');
+  }, [filteredPositions]);
 
   const stockPositions = useMemo(() => {
-    if (!positions) return [];
-    return positions.filter((h: any) => h.asset_type !== 'OPTION' && h.asset_type !== 'CASH_EQUIVALENT');
-  }, [positions]);
+    return filteredPositions.filter((h: any) => h.asset_type !== 'OPTION' && h.asset_type !== 'CASH_EQUIVALENT');
+  }, [filteredPositions]);
 
   const optionPositions = useMemo(() => {
-    if (!positions) return [];
-    return positions.filter((h: any) => h.asset_type === 'OPTION');
-  }, [positions]);
+    return filteredPositions.filter((h: any) => h.asset_type === 'OPTION');
+  }, [filteredPositions]);
 
   return (
     <MainLayout>
@@ -148,7 +152,12 @@ export default function Dashboard() {
             />
           </div>
           <div className="lg:col-span-1 h-full min-h-[350px]">
-            <AllocationChart data={positions ?? []} loading={isPositionsLoading} />
+            <AllocationChart
+               data={positions ?? []}
+               loading={isPositionsLoading}
+               selectedSector={selectedSector}
+               onSectorClick={setSelectedSector}
+            />
           </div>
         </div>
 

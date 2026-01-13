@@ -29,8 +29,18 @@ def get_settings(db: Session = Depends(get_db)):
             else:
                 results[key] = setting.value
         else:
-            results[key] = ""
+            # 嘗試從環境變數讀取（僅作為 fallback）
+            from app.core.config import settings as app_settings
+            val = getattr(app_settings, key, "")
+            if val:
+                if key in ["SCHWAB_API_KEY", "SCHWAB_API_SECRET"]:
+                    results[key] = mask_value(val)
+                else:
+                    results[key] = val
+            else:
+                results[key] = ""
             
+    print(f"🚀 [DEBUG] Returning settings to frontend: {results}")
     return results
 
 @router.post("")
@@ -39,6 +49,10 @@ def update_settings(update_data: SettingsUpdate, db: Session = Depends(get_db)):
         if not value:
             continue
             
+        # 如果使用者輸入的是遮罩後的字串 (全是 * 或含有 * 且長度跟原本可能不符)，則不更新
+        if "*" in value:
+            continue
+
         setting = db.query(SystemSetting).filter(SystemSetting.key == key).first()
         if setting:
             setting.value = value
@@ -47,4 +61,10 @@ def update_settings(update_data: SettingsUpdate, db: Session = Depends(get_db)):
             db.add(setting)
             
     db.commit()
+    print(f"🚀 [DEBUG] Settings updated in DB: {list(update_data.settings.keys())}")
+    
+    # 強制重整 SchwabClient
+    from app.services.schwab_client import schwab_client
+    schwab_client._refresh_config()
+    
     return {"message": "Settings updated successfully"}

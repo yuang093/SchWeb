@@ -22,9 +22,17 @@ dist/
 
 # 資料庫 (選擇性，通常不備份二進位檔)
 *.db
+*.sqlite
 *.sqlite3
 
 Add-Content .gitignore "`r`n*.rar"
 
 # 忽略備份目錄
 BROKEN/
+*.rar
+__pycache__/
+*.pyc
+
+# 忽略備份檔
+*.bak
+*.bak.*

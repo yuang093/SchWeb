@@ -1,6 +1,4 @@
-import axios from 'axios';
-
-const API_BASE_URL = 'http://localhost:8000/api/v1';
+import api from './client';
 
 export interface Position {
   symbol: string;
@@ -15,29 +13,30 @@ export interface Position {
   ytd_pnl: number | null;
   ytd_pnl_pct: number | null;
   asset_type: string;
+  sector: string;
   expiration_date?: string;
   allocation_pct?: number;
   drawdown_pct?: number;
 }
 
 export const getAccountList = async () => {
-  const response = await axios.get(`${API_BASE_URL}/account/list`);
+  const response = await api.get('/account/list');
   return response.data;
 };
 
 export const getAccountSummary = async (accountHash?: string) => {
   const params = accountHash ? { account_hash: accountHash } : {};
-  const response = await axios.get(`${API_BASE_URL}/account/summary`, { params });
+  const response = await api.get('/account/summary', { params });
   return response.data;
 };
 
 export const getPositions = async (accountHash?: string) => {
   const params = accountHash ? { account_hash: accountHash } : {};
-  const response = await axios.get(`${API_BASE_URL}/account/positions`, { params });
+  const response = await api.get('/account/positions', { params });
   return response.data;
 };
 
 export const getAssetHistory = async () => {
-  const response = await axios.get(`${API_BASE_URL}/account/history`);
+  const response = await api.get('/account/history');
   return response.data;
 };

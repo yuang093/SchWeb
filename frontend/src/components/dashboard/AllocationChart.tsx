@@ -1,17 +1,23 @@
 import { useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
 import { ArrowLeft } from 'lucide-react';
-import type { Holding } from '../../api/account';
+import type { Position as Holding } from '../../api/account';
 
 interface AllocationChartProps {
   data: Holding[];
   loading?: boolean;
+  selectedSector?: string | null;
+  onSectorClick?: (sector: string | null) => void;
 }
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#6366f1'];
 
-export default function AllocationChart({ data, loading = false }: AllocationChartProps) {
-  const [selectedSector, setSelectedSector] = useState<string | null>(null);
+export default function AllocationChart({
+  data,
+  loading = false,
+  selectedSector = null,
+  onSectorClick
+}: AllocationChartProps) {
 
   if (loading || !data || !Array.isArray(data) || data.length === 0) {
     return (
@@ -26,7 +32,8 @@ export default function AllocationChart({ data, loading = false }: AllocationCha
   // 1. 根據 Sector 聚合數據 (用於預設視圖)
   const sectorMap: Record<string, number> = {};
   data.forEach(item => {
-    sectorMap[item.sector] = (sectorMap[item.sector] || 0) + item.marketValue;
+    const sectorName = item.sector || 'Other';
+    sectorMap[sectorName] = (sectorMap[sectorName] || 0) + (item.market_value || 0);
   });
 
   const sectorData = Object.entries(sectorMap).map(([name, value]) => ({
@@ -40,7 +47,7 @@ export default function AllocationChart({ data, loading = false }: AllocationCha
         .filter(item => item.sector === selectedSector)
         .map(item => ({
           name: item.symbol,
-          value: item.marketValue
+          value: item.market_value
         }))
         .sort((a, b) => b.value - a.value)
     : [];
@@ -48,14 +55,10 @@ export default function AllocationChart({ data, loading = false }: AllocationCha
   const chartData = selectedSector ? holdingsInSector : sectorData;
 
   const handleClick = (entry: any) => {
-    // 只有在 Sector 視圖點擊時才進行下鑽
-    if (!selectedSector) {
-      setSelectedSector(entry.name);
+    if (onSectorClick) {
+      // 如果已經選中該產業，則取消選中，否則選中該產業
+      onSectorClick(selectedSector === entry.name ? null : entry.name);
     }
-  };
-
-  const handleBack = () => {
-    setSelectedSector(null);
   };
 
   const CustomTooltip = ({ active, payload }: any) => {
@@ -78,20 +81,20 @@ export default function AllocationChart({ data, loading = false }: AllocationCha
   };
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 h-full flex flex-col relative group">
+    <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 h-full min-h-[400px] flex flex-col relative group">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           {selectedSector && (
-            <button 
-              onClick={handleBack}
+            <button
+              onClick={() => onSectorClick?.(null)}
               className="p-1 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition-colors"
-              title="返回產業分佈"
+              title="重置篩選"
             >
               <ArrowLeft size={16} />
             </button>
           )}
           <h3 className="text-lg font-semibold text-white">
-            {selectedSector ? `${selectedSector} 持倉` : '產業分佈 (Sector Allocation)'}
+            {selectedSector ? `產業: ${selectedSector}` : '產業分佈 (Sector Allocation)'}
           </h3>
         </div>
         {selectedSector && (
@@ -113,7 +116,7 @@ export default function AllocationChart({ data, loading = false }: AllocationCha
               paddingAngle={5}
               dataKey="value"
               onClick={handleClick}
-              style={{ cursor: selectedSector ? 'default' : 'pointer' }}
+              style={{ cursor: 'pointer' }}
               animationBegin={0}
               animationDuration={600}
             >

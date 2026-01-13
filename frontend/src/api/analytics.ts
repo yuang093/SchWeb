@@ -1,6 +1,4 @@
-import axios from 'axios';
-
-const API_BASE_URL = 'http://localhost:8000/api/v1';
+import api from './client';
 
 export interface HistoryPoint {
   date: string;
@@ -14,6 +12,6 @@ export interface HistoryResponse {
 }
 
 export const getHistoricalNetWorth = async (): Promise<HistoryResponse> => {
-  const response = await axios.get(`${API_BASE_URL}/analytics/history`);
+  const response = await api.get('/analytics/history');
   return response.data;
 };

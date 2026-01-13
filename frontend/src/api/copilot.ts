@@ -1,12 +1,4 @@
-import axios from 'axios';
-
-// 動態獲取 API 網址，確保在區域網路 (LAN) 下手機也能正確連線
-const API_HOST = window.location.hostname;
-const API_BASE_URL = `http://${API_HOST}:8000/api/v1`;
-
-const api = axios.create({
-  baseURL: API_BASE_URL,
-});
+import api from './client';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';

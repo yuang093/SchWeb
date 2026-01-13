@@ -1,1 +1,13 @@
-"Hi Roo, please read PROJECT_CONTEXT.md to understand the project architecture, requirements, and coding rules. Do not write any code yet. Just acknowledge you have read it and summarize the 'Current Task' based on the file."
+既然你在同一個視窗繼續工作，建議改成 兩段式 即可：
+
+Step 1: 任務 + 規則提醒 (合併前兩段)
+
+"Continuing with the project guidelines in PROJECT_CONTEXT.md, I now need to [說明你的新任務]. Please implement this following the established architecture."
+
+(中間這段時間讓它去寫扣、除錯、直到你滿意)
+
+Step 2: 完工結案 (原本的第三段)
+
+"Great, it works. Now please update the 'Change Log' in PROJECT_CONTEXT.md with these changes."
+
+這樣既能省去等待它「確認已讀」的時間，又能確保它不會忘記更新文件。
