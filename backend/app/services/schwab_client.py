@@ -295,8 +295,8 @@ class SchwabClient:
                     "total_balance": total_balance,
                     "cash_balance": cash_balance,
                     "buying_power": current_balances.get("buyingPower", 0),
-                    "day_pl": float(securities_account.get("currentBalances", {}).get("totalCash", 0)),
-                    "day_pl_percent": 0,
+                    "day_pl": sum(h["day_pnl"] for h in holdings),
+                    "day_pl_percent": (sum(h["day_pnl"] for h in holdings) / abs(total_account_value - sum(h["day_pnl"] for h in holdings)) * 100) if (total_account_value - sum(h["day_pnl"] for h in holdings)) != 0 else 0,
                     "holdings": holdings
                 }]
             }

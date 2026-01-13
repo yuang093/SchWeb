@@ -147,3 +147,4 @@ todo_progress.md: 拆解後的任務清單，包含 [ ] Todo, [x] Done, [-] In P
 - [2026-01-13] [Roo] 產業分佈圖中文化：在 `AllocationChart.tsx` 中實作行業名稱對照表，將 GICS 產業分類翻譯為繁體中文，優化圖例 (Legend) 與工具提示 (Tooltip) 的顯示體驗。
 - [2026-01-13] [Roo] 優化風險分析 Beta 計算與帳戶切換：實作持倉加權 Beta (Ex-ante Beta) 邏輯以修復 SSL 報錯導致的異常數值；在「風險分析」頁面新增帳戶切換器並支援後端 `account_hash` 參數過濾。
 - [2026-01-13] [Roo] 更新 Dashboard 卡片與系統架構圖：將首頁「購買力」卡片替換為「Beta 係數」顯示；建立 `backend/app/utils/risk.py` 模組化風險計算邏輯並同步更新 `overview.md` 目錄結構。
+- [2026-01-13] [Roo] 修復 Dashboard 當日盈虧 (Day P/L) 顯示為 0 的問題：修正 `schwab_client.py` 中原本錯誤對應到 `totalCash` 的邏輯，改為動態累加所有持倉的 `dayProfitLoss` 並實作盈虧百分比計算。
