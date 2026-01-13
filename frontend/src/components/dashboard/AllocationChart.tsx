@@ -12,6 +12,26 @@ interface AllocationChartProps {
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#6366f1'];
 
+const SECTOR_TRANSLATIONS: Record<string, string> = {
+  "Energy": "能源",
+  "Materials": "原物料",
+  "Industrials": "工業",
+  "Consumer Discretionary": "非必需消費",
+  "Consumer Staples": "必需消費",
+  "Health Care": "醫療保健",
+  "Financials": "金融",
+  "Information Technology": "資訊科技",
+  "Communication Services": "通訊服務",
+  "Utilities": "公用事業",
+  "Real Estate": "房地產",
+  "ETFs": "ETF",
+  "Other": "其他",
+  "Options": "選擇權",
+  "Cash": "現金"
+};
+
+const translateSector = (sector: string) => SECTOR_TRANSLATIONS[sector] || sector;
+
 export default function AllocationChart({
   data,
   loading = false,
@@ -65,9 +85,11 @@ export default function AllocationChart({
     if (active && payload && payload.length) {
       const total = chartData.reduce((sum, item) => sum + item.value, 0);
       const percent = ((payload[0].value / total) * 100).toFixed(1);
+      const displayName = selectedSector ? payload[0].name : translateSector(payload[0].name);
+      
       return (
         <div className="bg-slate-900 border border-slate-800 p-3 rounded-lg shadow-xl">
-          <p className="text-xs text-slate-400 mb-1">{payload[0].name}</p>
+          <p className="text-xs text-slate-400 mb-1">{displayName}</p>
           <p className="text-sm font-bold text-white">
             ${payload[0].value.toLocaleString()} ({percent}%)
           </p>
@@ -94,7 +116,7 @@ export default function AllocationChart({
             </button>
           )}
           <h3 className="text-lg font-semibold text-white">
-            {selectedSector ? `產業: ${selectedSector}` : '產業分佈 (Sector Allocation)'}
+            {selectedSector ? `產業: ${translateSector(selectedSector)}` : '產業分佈 (Sector Allocation)'}
           </h3>
         </div>
         {selectedSector && (
@@ -134,7 +156,7 @@ export default function AllocationChart({
               layout="vertical" 
               align="right" 
               verticalAlign="middle"
-              formatter={(value) => <span className="text-xs text-slate-400">{value}</span>}
+              formatter={(value) => <span className="text-xs text-slate-400">{translateSector(value)}</span>}
             />
           </PieChart>
         </ResponsiveContainer>

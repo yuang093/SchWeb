@@ -6,6 +6,7 @@ import os
 from datetime import datetime
 from app.core.config import settings
 from app.db.database import SessionLocal
+from app.utils.sector_mapper import get_sector as get_fallback_sector
 from app.models.persistence import SystemSetting, AssetHistory, HoldingSnapshot
 from typing import List, Dict, Any, Optional
 
@@ -47,7 +48,7 @@ class SchwabClient:
             self._refresh_config()
         return self._api_secret
 
-    def _save_token_to_db(self, token_dict: Dict[str, Any]):
+    def _save_token_to_db(self, token_dict: Dict[str, Any], **kwargs):
         db = SessionLocal()
         try:
             # 偵錯
@@ -262,7 +263,15 @@ class SchwabClient:
                         if high_52w: break
                 
                 drawdown_pct = ((price - high_52w) / high_52w * 100) if high_52w and high_52w > 0 else None
-                sector = symbol_quote.get("fundamental", {}).get("sector") or symbol_quote.get("quote", {}).get("sector") or p.get("sector") or inst.get("sector") or "Other"
+                sector = symbol_quote.get("fundamental", {}).get("sector") or \
+                         symbol_quote.get("quote", {}).get("sector") or \
+                         p.get("sector") or \
+                         inst.get("sector")
+                
+                # 如果 API 沒給，使用預定義映射
+                if not sector or sector == "Other":
+                    sector = get_fallback_sector(symbol, asset_type)
+
                 name = symbol_quote.get("reference", {}).get("description") or inst.get("description") or p.get("description") or symbol
 
                 holdings.append({

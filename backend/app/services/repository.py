@@ -62,10 +62,9 @@ class AccountRepository:
             try:
                 print(f"INFO: APP_MODE=REAL, fetching data for account: {account_hash or 'default'}")
                 data = schwab_client.get_real_account_data(account_hash)
-                if "error" not in data:
-                    # 同步到資料庫 (持久化當前資產狀態)
-                    self._sync_real_data_to_db(data)
-                else:
+                # 注意：schwab_client.get_real_account_data 內部已經實作了 _sync_real_data_to_db
+                # 這裡不需重複呼叫，避免重複寫入且格式不一致的問題
+                if "error" in data:
                     print(f"❌ [CRITICAL] 真實數據獲取包含錯誤: {data['error']}")
                 return data
             except Exception as e:

@@ -143,3 +143,5 @@ todo_progress.md: 拆解後的任務清單，包含 [ ] Todo, [x] Done, [-] In P
 - [2026-01-12] [Roo] 強制 Token 同步與匯入工具：優化 SchwabClient 啟動邏輯，支援多路徑 (Root/Backend) 自動偵測 `token.json` 並強制同步至資料庫，提供安全的時間戳記備份機制。
 - [2026-01-13] [Roo] 深度修復認證持久化格式與數據同步：修正 `SchwabClient` 的 Token 讀取/儲存包裝邏輯，確保與 `schwab-py` 的 Metadata 驗證相容；完成持倉名稱解析優化，解決同步崩潰問題。
 - [2026-01-13] [Roo] 系統穩定性強化：解決跨裝置 (行動端) 連線、API 金鑰/Token 資料庫同步、以及 Windows 檔案權限導致的備份衝突等關鍵回歸問題，確保系統 100% 脫離檔案依賴。
+- [2026-01-13] [Roo] 修復產業分佈圓餅圖：實作 `sector_mapper.py` 補足 Schwab API 缺失的 GICS 行業資訊，修復 Token 自動刷新崩潰問題，並統一後端數據同步邏輯，解決圓餅圖僅顯示 "Other" 的問題。
+- [2026-01-13] [Roo] 產業分佈圖中文化：在 `AllocationChart.tsx` 中實作行業名稱對照表，將 GICS 產業分類翻譯為繁體中文，優化圖例 (Legend) 與工具提示 (Tooltip) 的顯示體驗。
