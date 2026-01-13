@@ -145,3 +145,5 @@ todo_progress.md: 拆解後的任務清單，包含 [ ] Todo, [x] Done, [-] In P
 - [2026-01-13] [Roo] 系統穩定性強化：解決跨裝置 (行動端) 連線、API 金鑰/Token 資料庫同步、以及 Windows 檔案權限導致的備份衝突等關鍵回歸問題，確保系統 100% 脫離檔案依賴。
 - [2026-01-13] [Roo] 修復產業分佈圓餅圖：實作 `sector_mapper.py` 補足 Schwab API 缺失的 GICS 行業資訊，修復 Token 自動刷新崩潰問題，並統一後端數據同步邏輯，解決圓餅圖僅顯示 "Other" 的問題。
 - [2026-01-13] [Roo] 產業分佈圖中文化：在 `AllocationChart.tsx` 中實作行業名稱對照表，將 GICS 產業分類翻譯為繁體中文，優化圖例 (Legend) 與工具提示 (Tooltip) 的顯示體驗。
+- [2026-01-13] [Roo] 優化風險分析 Beta 計算與帳戶切換：實作持倉加權 Beta (Ex-ante Beta) 邏輯以修復 SSL 報錯導致的異常數值；在「風險分析」頁面新增帳戶切換器並支援後端 `account_hash` 參數過濾。
+- [2026-01-13] [Roo] 更新 Dashboard 卡片與系統架構圖：將首頁「購買力」卡片替換為「Beta 係數」顯示；建立 `backend/app/utils/risk.py` 模組化風險計算邏輯並同步更新 `overview.md` 目錄結構。

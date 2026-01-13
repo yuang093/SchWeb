@@ -1,7 +1,11 @@
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import MainLayout from '../components/layout/MainLayout';
 import StatCard from '../components/dashboard/StatCard';
+import AccountSelector from '../components/dashboard/AccountSelector';
 import { getRiskMetrics } from '../api/risk';
+import { getAccountList } from '../api/account';
+import { useAppStore } from '../store/useAppStore';
 import { AlertTriangle, TrendingUp, ShieldCheck, Zap, Activity } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -11,9 +15,27 @@ function cn(...inputs: ClassValue[]) {
 }
 
 export default function RiskAnalysis() {
+  const [selectedAccountHash, setSelectedAccountHash] = useState<string>('');
+  const { isLiveMode } = useAppStore();
+
+  const { data: accounts, isLoading: isAccountsLoading } = useQuery({
+    queryKey: ['accountList'],
+    queryFn: getAccountList,
+  });
+
+  useEffect(() => {
+    if (accounts && accounts.length > 0) {
+      const validAccounts = accounts.filter((a: any) => a.hash_value && a.hash_value !== 'ERROR');
+      if (!selectedAccountHash && validAccounts.length > 0) {
+        setSelectedAccountHash(validAccounts[0].hash_value);
+      }
+    }
+  }, [accounts, selectedAccountHash]);
+
   const { data: risk, isLoading } = useQuery({
-    queryKey: ['riskMetrics'],
-    queryFn: getRiskMetrics,
+    queryKey: ['riskMetrics', selectedAccountHash],
+    queryFn: () => getRiskMetrics(selectedAccountHash),
+    enabled: isLiveMode ? !!selectedAccountHash : true,
   });
 
   // Beta 標籤邏輯
@@ -27,9 +49,19 @@ export default function RiskAnalysis() {
   return (
     <MainLayout>
       <div className="grid gap-6">
-        <header>
-          <h1 className="text-3xl font-bold tracking-tight text-white">風險分析 (Risk Analysis)</h1>
-          <p className="text-slate-400 mt-2">基於歷史數據與市場基準 (SPY) 計算的深度風險指標。</p>
+        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight text-white">風險分析 (Risk Analysis)</h1>
+            <p className="text-slate-400 mt-1">基於歷史數據與市場基準 (SPY) 計算的深度風險指標。</p>
+          </div>
+          {accounts && accounts.length > 0 && (
+            <AccountSelector
+              accounts={accounts}
+              selectedHash={selectedAccountHash}
+              onSelect={setSelectedAccountHash}
+              disabled={isAccountsLoading}
+            />
+          )}
         </header>
 
         {/* 第一排：核心風險指標 */}

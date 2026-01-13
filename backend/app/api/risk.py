@@ -2,66 +2,34 @@ from fastapi import APIRouter
 from app.services.repository import account_repo
 import pandas as pd
 import numpy as np
-import yfinance as yf
-from datetime import datetime, timedelta
+from datetime import datetime
+from app.utils.risk import get_market_returns, calculate_weighted_beta
 
 router = APIRouter()
 
-def get_market_returns(start_date, end_date, dates_index):
-    """
-    獲取市場 (SPY) 報酬率，若失敗則回傳模擬數據
-    """
-    try:
-        # 嘗試從 yfinance 下載
-        # 抓取較寬的時間範圍以確保對齊
-        spy_start = (datetime.strptime(start_date, '%Y-%m-%d') - timedelta(days=7)).strftime('%Y-%m-%d')
-        spy_end = (datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=7)).strftime('%Y-%m-%d')
-        
-        spy_data = yf.download("SPY", start=spy_start, end=spy_end, progress=False)
-        
-        if not spy_data.empty:
-            # 統一移除時區並轉為 date 物件
-            if spy_data.index.tz is not None:
-                spy_data.index = spy_data.index.tz_convert(None).date
-            else:
-                spy_data.index = spy_data.index.tz_localize(None).date
-            
-            # 處理可能的多重索引 (MultiIndex)
-            if isinstance(spy_data.columns, pd.MultiIndex):
-                spy_prices = spy_data['Adj Close'].iloc[:, 0]
-            else:
-                spy_prices = spy_data['Adj Close']
-                
-            spy_returns = spy_prices.pct_change().dropna()
-            
-            # 如果成功抓到足夠數據，直接回傳
-            if len(spy_returns) >= 5:
-                return spy_returns
-        
-        raise ValueError("Empty or insufficient SPY data from yfinance")
-
-    except Exception as e:
-        print(f"WARNING: Failed to download SPY data ({str(e)}). Using simulated market data for Beta calculation.")
-        
-        # Fallback: 生成模擬大盤數據 (Random Walk)
-        # 建立與使用者資產歷史日期完全一致的索引
-        np.random.seed(42) # 固定種子確保數值穩定
-        simulated_returns = pd.Series(
-            np.random.normal(0.0005, 0.01, len(dates_index)), 
-            index=dates_index
-        )
-        return simulated_returns
-
 @router.get("/metrics")
-def get_risk_metrics():
+def get_risk_metrics(account_hash: str = None):
     """
     計算並回傳風險分析指標，包含 Volatility, Sharpe Ratio, Max Drawdown, Beta 與 VaR
     """
-    # 優先從資料庫獲取歷史數據
+    from app.services.schwab_client import schwab_client
+    
+    # 1. 獲取即時持倉用於計算加權 Beta
+    real_data = schwab_client.get_real_account_data(account_hash)
+    weighted_beta = 1.0
+    if "error" not in real_data:
+        acc_info = real_data['accounts'][0]
+        weighted_beta = calculate_weighted_beta(acc_info['holdings'], acc_info['total_balance'])
+
+    # 2. 獲取歷史數據用於其他統計指標
     history = account_repo.get_history_from_db()
     
     if not history:
-        return {"error": "No history data available for risk analysis"}
+        return {
+            "volatility": 0, "sharpe_ratio": 0, "max_drawdown": 0,
+            "annual_return": 0, "beta": weighted_beta, "var_95": 0,
+            "current_value": real_data.get('accounts', [{}])[0].get('total_balance', 0)
+        }
     
     # 轉換為 DataFrame
     df = pd.DataFrame(history)
@@ -109,12 +77,18 @@ def get_risk_metrics():
         if len(combined) >= 5:
             covariance = combined.cov().iloc[0, 1]
             spy_variance = combined['spy'].var()
-            beta = float(covariance / spy_variance) if spy_variance > 0 else "N/A"
+            reg_beta = float(covariance / spy_variance) if spy_variance > 0 else None
+            
+            # 如果回歸計算出來的 Beta 太誇張 (例如負數且是 Long Portfolio)，則與加權 Beta 混合或優先使用加權
+            if reg_beta is not None and reg_beta > 0:
+                beta = reg_beta # 使用回歸 Beta
+            else:
+                beta = weighted_beta # 使用加權 Beta
         else:
-            print(f"WARNING: Beta intersection too small ({len(combined)} days)")
+            beta = weighted_beta
     except Exception as e:
         print(f"Error calculating Beta: {str(e)}")
-        beta = "N/A"
+        beta = weighted_beta
 
     # --- 5. 風險值 VaR (95% 信心水準, 歷史模擬法) ---
     var_95 = 0

@@ -108,7 +108,12 @@ export default function Dashboard() {
           <StatCard title="總資產 (Net Worth)" value={summary?.total_balance || 0} loading={isSummaryLoading} />
           <StatCard title="當日盈虧 (Day P/L)" value={summary?.day_pl || 0} change={summary?.day_pl} changePercent={summary?.day_pl_percent} loading={isSummaryLoading} />
           <StatCard title="現金餘額 (Cash)" value={summary?.cash_balance || 0} loading={isSummaryLoading} />
-          <StatCard title="購買力 (Buying Power)" value={summary?.buying_power || 0} loading={isSummaryLoading} />
+          <StatCard
+            title="Beta (vs SPY)"
+            value={summary?.beta !== undefined ? summary.beta : "N/A"}
+            prefix=""
+            loading={isSummaryLoading}
+          />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

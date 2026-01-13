@@ -143,12 +143,19 @@ class AccountRepository:
         finally:
             db.close()
             
+        # 計算 Beta 係數 (加權持倉)
+        from app.utils.risk import calculate_weighted_beta
+        holdings = data["accounts"][0].get("holdings", [])
+        total_val = data["accounts"][0].get("total_balance", 0)
+        beta_val = calculate_weighted_beta(holdings, total_val)
+
         return {
             "total_balance": acc_summary.get("total_balance", 0),
             "day_pl": acc_summary.get("day_pl", 0),
             "day_pl_percent": acc_summary.get("day_pl_percent", 0),
             "cash_balance": acc_summary.get("cash_balance", 0),
             "buying_power": acc_summary.get("buying_power", 0),
+            "beta": float(beta_val),
             "total_dividends": acc_summary.get("total_dividends", 0),
             "realized_pnl": acc_summary.get("realized_pnl", 0)
         }
