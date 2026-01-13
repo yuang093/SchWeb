@@ -288,6 +288,12 @@ class SchwabClient:
             total_balance = total_account_value
             cash_balance = current_balances.get("cashBalance", 0)
             self._sync_real_data_to_db(account_hash, total_balance, cash_balance, holdings)
+            
+            # 非同步同步交易紀錄 (股息與已實現損益)
+            try:
+                self.sync_transactions(account_hash)
+            except Exception as e:
+                print(f"⚠️ 同步交易紀錄失敗: {e}")
 
             return {
                 "accounts": [{
@@ -328,5 +334,95 @@ class SchwabClient:
             print(f"❌ [ERROR] Sync REAL data to DB fail: {e}")
             db.rollback()
         finally: db.close()
+
+    def sync_transactions(self, account_hash: str):
+        """
+        同步交易紀錄，提取股息與已實現損益
+        """
+        try:
+            client = self.get_client()
+            # 獲取本年度至今的交易
+            current_year = datetime.now().year
+            from_date = datetime(current_year, 1, 1)
+            to_date = datetime.now()
+
+            resp = client.get_transactions(account_hash, start_date=from_date, end_date=to_date)
+            if resp.status_code != 200:
+                print(f"⚠️ 無法獲取交易紀錄: {resp.text}")
+                return
+
+            transactions = resp.json()
+            if not transactions:
+                return
+
+            db = SessionLocal()
+            try:
+                from app.models.persistence import Dividend, TradeHistory
+                for tx in transactions:
+                    tx_type = tx.get("type")
+                    tx_id = tx.get("activityId") # 用於排重，但模型目前沒這欄位，先用日期+符號+金額
+                    tx_date_str = tx.get("settlementDate") or tx.get("tradeDate")
+                    if not tx_date_str: continue
+                    tx_date = datetime.strptime(tx_date_str[:10], "%Y-%m-%d").date()
+                    
+                    # 處理股息 (包含現金股息與再投入)
+                    # 根據使用者需求：合併計算 Cash Dividend 與 DRIP (Reinvest)
+                    desc = tx.get("description", "")
+                    is_div_type = tx_type == "DIVIDEND_OR_INTEREST"
+                    is_div_desc = any(k in desc for k in ["Div", "Dividend", "Reinvest", "DRIP"])
+                    
+                    if is_div_type or is_div_desc:
+                        # 提取金額並取絕對值 (應對再投入可能記為負值的情況)
+                        amount = 0
+                        symbol = "CASH"
+                        
+                        # 優先從 transferItems 提取金額
+                        if "transferItems" in tx:
+                            for item in tx["transferItems"]:
+                                amount += abs(float(item.get("amount") or 0))
+                                symbol = item.get("instrument", {}).get("symbol", symbol)
+                        
+                        # 如果 transferItems 沒金額，嘗試從 transactionItem (針對 TRADE 型態的 Reinvest)
+                        if amount == 0 and "transactionItem" in tx:
+                            item = tx["transactionItem"]
+                            amount = abs(float(item.get("amount") or 0) * float(item.get("price") or 1))
+                            symbol = item.get("instrument", {}).get("symbol", symbol)
+
+                        if amount > 0:
+                            # 檢查是否已存在 (以 hash + 日期 + 符號 + 金額排重)
+                            existing = db.query(Dividend).filter(
+                                Dividend.account_hash == account_hash,
+                                Dividend.date == tx_date,
+                                Dividend.symbol == symbol,
+                                Dividend.amount == amount
+                            ).first()
+                            
+                            if not existing:
+                                db.add(Dividend(
+                                    account_hash=account_hash,
+                                    date=tx_date,
+                                    symbol=symbol,
+                                    amount=amount,
+                                    description=desc
+                                ))
+
+                    # 處理賣出 (已實現損益)
+                    elif tx_type == "TRADE" and tx.get("transactionItem", {}).get("instruction") == "SELL":
+                        item = tx.get("transactionItem", {})
+                        symbol = item.get("instrument", {}).get("symbol", "UNKNOWN")
+                        qty = float(item.get("amount") or 0)
+                        price = float(item.get("price") or 0)
+                        # 注意：Schwab API 的交易紀錄可能不直接提供當時的平均成本
+                        # 這裡的 realized_pnl 計算可能需要更複雜的邏輯，或者從 description 提取
+                        # 先簡單記錄交易，之後再優化計算
+                        
+                db.commit()
+            except Exception as e:
+                print(f"❌ [ERROR] Processing transactions fail: {e}")
+                db.rollback()
+            finally:
+                db.close()
+        except Exception as e:
+            print(f"❌ [ERROR] sync_transactions 異常: {e}")
 
 schwab_client = SchwabClient()

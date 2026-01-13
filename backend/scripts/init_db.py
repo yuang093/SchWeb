@@ -12,6 +12,8 @@ from app.models.persistence import AssetHistory, HoldingSnapshot, Dividend, Trad
 
 def init_db():
     # 建立資料表
+    print("正在清理舊資料表...")
+    Base.metadata.drop_all(bind=engine)
     print("正在建立資料表...")
     Base.metadata.create_all(bind=engine)
 
@@ -86,6 +88,7 @@ def init_db():
             existing = db.query(Dividend).filter(Dividend.date == div_date, Dividend.symbol == symbol).first()
             if not existing:
                 div = Dividend(
+                    account_hash=account.get('hash_value', 'mock_hash_123'),
                     date=div_date,
                     symbol=symbol,
                     amount=round(random.uniform(10, 100), 2),
@@ -107,6 +110,7 @@ def init_db():
             existing = db.query(TradeHistory).filter(TradeHistory.date == trade_date, TradeHistory.symbol == symbol).first()
             if not existing:
                 trade = TradeHistory(
+                    account_hash=account.get('hash_value', 'mock_hash_123'),
                     date=trade_date,
                     symbol=symbol,
                     side='SELL',

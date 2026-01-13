@@ -132,10 +132,27 @@ class AccountRepository:
         
         db = SessionLocal()
         try:
-            total_dividends = db.query(func.sum(Dividend.amount)).scalar() or 0.0
+            # 計算本年度 (YTD) 股息與已實現損益
+            current_year = datetime.now().year
+            start_of_year = datetime(current_year, 1, 1).date()
+            
+            # 優先使用傳入的 hash，若無則從資料中提取 (相容 REAL 與 MOCK 模式)
+            actual_hash = account_hash or acc_summary.get("hash_value") or acc_summary.get("account_id")
+
+            # 股息查詢 (增加帳戶與年份過濾)
+            div_query = db.query(func.sum(Dividend.amount)).filter(Dividend.date >= start_of_year)
+            if actual_hash:
+                div_query = div_query.filter(Dividend.account_hash == actual_hash)
+            
+            total_dividends = div_query.scalar() or 0.0
             acc_summary["total_dividends"] = float(total_dividends)
 
-            realized_pnl = db.query(func.sum(TradeHistory.realized_pnl)).scalar() or 0.0
+            # 已實現損益查詢 (增加帳戶與年份過濾)
+            pnl_query = db.query(func.sum(TradeHistory.realized_pnl)).filter(TradeHistory.date >= start_of_year)
+            if actual_hash:
+                pnl_query = pnl_query.filter(TradeHistory.account_hash == actual_hash)
+                
+            realized_pnl = pnl_query.scalar() or 0.0
             acc_summary["realized_pnl"] = float(realized_pnl)
 
         except Exception as e:

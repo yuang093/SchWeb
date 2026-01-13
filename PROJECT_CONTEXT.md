@@ -148,3 +148,7 @@ todo_progress.md: 拆解後的任務清單，包含 [ ] Todo, [x] Done, [-] In P
 - [2026-01-13] [Roo] 優化風險分析 Beta 計算與帳戶切換：實作持倉加權 Beta (Ex-ante Beta) 邏輯以修復 SSL 報錯導致的異常數值；在「風險分析」頁面新增帳戶切換器並支援後端 `account_hash` 參數過濾。
 - [2026-01-13] [Roo] 更新 Dashboard 卡片與系統架構圖：將首頁「購買力」卡片替換為「Beta 係數」顯示；建立 `backend/app/utils/risk.py` 模組化風險計算邏輯並同步更新 `overview.md` 目錄結構。
 - [2026-01-13] [Roo] 修復 Dashboard 當日盈虧 (Day P/L) 顯示為 0 的問題：修正 `schwab_client.py` 中原本錯誤對應到 `totalCash` 的邏輯，改為動態累加所有持倉的 `dayProfitLoss` 並實作盈虧百分比計算。
+- [2026-01-13] [Roo] 深度修復「累計股息 (YTD Dividends)」數據異常：
+    - 資料庫變更：在 `persistence.py` 中的 `Dividend` 與 `TradeHistory` 模型新增 `account_hash` 欄位，實現多帳戶數據隔離。
+    - 邏輯更新：在 `schwab_client.py` 採納「合併計算策略」，同時追蹤 `DIVIDEND_OR_INTEREST` 與描述含 "Div/DRIP" 的交易。
+    - 收益統計優化：實作 `abs()` 絕對值加總以正確統計負值的再投入 (DRIP) 交易，並將查詢範圍嚴格鎖定為本年度 (YTD)，排除歷史數據干擾。

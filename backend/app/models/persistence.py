@@ -42,6 +42,7 @@ class Dividend(Base):
     __tablename__ = "dividends"
 
     id = Column(Integer, primary_key=True, index=True)
+    account_hash = Column(String, index=True, nullable=True) # 關聯帳戶
     date = Column(Date, index=True, nullable=False)
     symbol = Column(String, index=True, nullable=False)
     amount = Column(Float, nullable=False)
@@ -55,6 +56,7 @@ class TradeHistory(Base):
     __tablename__ = "trade_history"
 
     id = Column(Integer, primary_key=True, index=True)
+    account_hash = Column(String, index=True, nullable=True) # 關聯帳戶
     date = Column(Date, index=True, nullable=False)
     symbol = Column(String, index=True, nullable=False)
     side = Column(String, nullable=False) # 'BUY' or 'SELL'
