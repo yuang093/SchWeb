@@ -40,3 +40,13 @@ __pycache__/
 # 忽略備份檔
 *.bak
 *.bak.*
+
+# 👇 加入這些例外規則 (解除封印)
+!package.json
+!package-lock.json
+!frontend/package.json
+!frontend/package-lock.json
+!frontend/tsconfig.json
+!frontend/tsconfig.app.json
+!frontend/tsconfig.node.json
+!frontend/postcss.config.js  # 如果這也被忽略的話，加這行
