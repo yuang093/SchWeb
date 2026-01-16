@@ -138,10 +138,15 @@ export default function Dashboard() {
                 <Coins size={20} />
               </div>
               <div>
-                <p className="text-[10px] md:text-xs text-slate-500 font-medium uppercase tracking-wider">已實現損益 (Realized P&L)</p>
-                <h4 className={cn("text-base md:text-lg font-bold", (summary?.realized_pnl || 0) >= 0 ? "text-white" : "text-rose-400")}>
-                  {isSummaryLoading ? "---" : `${(summary?.realized_pnl || 0) >= 0 ? '+' : ''}$${maskValue((summary?.realized_pnl || 0).toLocaleString(), 'currency')}`}
-                </h4>
+                <p className="text-[10px] md:text-xs text-slate-500 font-medium uppercase tracking-wider">總報酬 (Total Return)</p>
+                <div className="flex items-baseline gap-2">
+                  <h4 className={cn("text-base md:text-lg font-bold", (summary?.total_return_abs || 0) >= 0 ? "text-white" : "text-rose-400")}>
+                    {isSummaryLoading ? "---" : `${(summary?.total_return_abs || 0) >= 0 ? '+' : ''}$${maskValue((summary?.total_return_abs || 0).toLocaleString(), 'currency')}`}
+                  </h4>
+                  <span className={cn("text-[10px] md:text-xs font-bold", (summary?.total_return_pct || 0) >= 0 ? "text-emerald-400" : "text-rose-400")}>
+                    {isSummaryLoading ? "" : `${(summary?.total_return_pct || 0) >= 0 ? '+' : ''}${(summary?.total_return_pct || 0).toFixed(2)}%`}
+                  </span>
+                </div>
               </div>
             </div>
             <div className="hidden sm:block text-[10px] text-blue-400 font-bold bg-blue-500/5 px-2 py-1 rounded">TRADING RECORD</div>

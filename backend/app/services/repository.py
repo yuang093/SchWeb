@@ -139,21 +139,51 @@ class AccountRepository:
             # 優先使用傳入的 hash，若無則從資料中提取 (相容 REAL 與 MOCK 模式)
             actual_hash = account_hash or acc_summary.get("hash_value") or acc_summary.get("account_id")
 
-            # 股息查詢 (增加帳戶與年份過濾)
-            div_query = db.query(func.sum(Dividend.amount)).filter(Dividend.date >= start_of_year)
+            # 股息查詢 (改為全期累計，滿足使用者對「累積股息」的預期)
+            div_query = db.query(func.sum(Dividend.amount))
             if actual_hash:
                 div_query = div_query.filter(Dividend.account_hash == actual_hash)
             
             total_dividends = div_query.scalar() or 0.0
             acc_summary["total_dividends"] = float(total_dividends)
 
-            # 已實現損益查詢 (改為 All-time 累計)
+            # 總報酬 (Total Return) 計算
+            # 手動校正項 (處理如 ACAT 移轉或 5 年前的舊本金)
+            MANUAL_ADJUSTMENTS = {
+                # 帳號 323: TD Ameritrade Legacy Capital (2021-2024)
+                '0BE26F441D89A19F6355BB0D093751CE9B176408561BBD9FEB09A83634FBD991': 47400.37,
+                '7681CABBC1C889DACD28A6EF327AF5003CDBE8E4CF801C69F491209D3C8F8AA9': 0.0,
+            }
+
+            # 1. 獲取總入金
+            deposit_query = db.query(func.sum(TradeHistory.quantity)).filter(TradeHistory.side == 'DEPOSIT')
+            if actual_hash:
+                deposit_query = deposit_query.filter(TradeHistory.account_hash == actual_hash)
+            total_deposits = deposit_query.scalar() or 0.0
+            
+            # 2. 獲取總出金
+            withdrawal_query = db.query(func.sum(TradeHistory.quantity)).filter(TradeHistory.side == 'WITHDRAWAL')
+            if actual_hash:
+                withdrawal_query = withdrawal_query.filter(TradeHistory.account_hash == actual_hash)
+            total_withdrawals = withdrawal_query.scalar() or 0.0
+            
+            # 加入手動校正項
+            adjustment = MANUAL_ADJUSTMENTS.get(actual_hash, 0.0)
+            net_invested = total_deposits - total_withdrawals + adjustment
+            
+            current_net_worth = acc_summary.get("total_balance", 0)
+            
+            total_return_abs = current_net_worth - net_invested
+            total_return_pct = (total_return_abs / net_invested * 100) if net_invested > 0 else 0.0
+            
+            acc_summary["total_return_abs"] = float(total_return_abs)
+            acc_summary["total_return_pct"] = float(total_return_pct)
+            
+            # 保留 realized_pnl 以防萬一，但前端主要會改用 total_return
             pnl_query = db.query(func.sum(TradeHistory.realized_pnl))
             if actual_hash:
                 pnl_query = pnl_query.filter(TradeHistory.account_hash == actual_hash)
-                
-            realized_pnl = pnl_query.scalar() or 0.0
-            acc_summary["realized_pnl"] = float(realized_pnl)
+            acc_summary["realized_pnl"] = float(pnl_query.scalar() or 0.0)
 
         except Exception as e:
             print(f"Error loading summary stats from DB: {str(e)}")
@@ -174,7 +204,9 @@ class AccountRepository:
             "buying_power": acc_summary.get("buying_power", 0),
             "beta": float(beta_val),
             "total_dividends": acc_summary.get("total_dividends", 0),
-            "realized_pnl": acc_summary.get("realized_pnl", 0)
+            "realized_pnl": acc_summary.get("realized_pnl", 0),
+            "total_return_abs": acc_summary.get("total_return_abs", 0),
+            "total_return_pct": acc_summary.get("total_return_pct", 0)
         }
 
     def get_positions(self, account_hash: Optional[str] = None) -> List[Dict[str, Any]]:

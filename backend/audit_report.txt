@@ -1,0 +1,31 @@
+=== Dividend Audit for Account 323 (0BE26F441D...) ===
+
+[1] Yearly Statistics:
+  Year 2022: $47.51 (4 records)
+  Year 2023: $1,043.79 (51 records)
+  Year 2024: $2,185.75 (122 records)
+  Year 2025: $2,205.66 (172 records)
+  Year 2026: $168.93 (15 records)
+
+[2] Found 0 Duplicate Groups (Same Date, Amount, Description):
+
+[3] 2023 Deep Dive (Checking for TD/Schwab overlap):
+  2023 Schwab-like: 35 records, $697.90
+  2023 TD-like: 16 records, $345.89
+
+[4] Found 133 Potential Duplicates (Same Date & Amount, different desc):
+  Date: 2024-04-30, Amount: $110.88
+    - ID: 234, Desc: ALTRIA GROUP INC
+    - ID: 369, Desc: Qual Div Reinvest: ALTRIA GROUP INC
+  Date: 2024-05-10, Amount: $12.33
+    - ID: 233, Desc: CLOROX CO
+    - ID: 368, Desc: Qual Div Reinvest: CLOROX CO
+  Date: 2024-05-15, Amount: $16.04
+    - ID: 232, Desc: ABBVIE INC
+    - ID: 367, Desc: Qual Div Reinvest: ABBVIE INC
+  Date: 2024-05-15, Amount: $27.62
+    - ID: 230, Desc: REALTY INCOME CORP REIT
+    - ID: 365, Desc: Non-Qualified Div: REALTY INCOME CORP REIT
+  Date: 2024-05-15, Amount: $28.25
+    - ID: 231, Desc: HORMEL FOODS CORP
+    - ID: 366, Desc: Qual Div Reinvest: HORMEL FOODS CORP

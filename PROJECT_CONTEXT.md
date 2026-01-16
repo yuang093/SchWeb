@@ -115,7 +115,12 @@ overview.md: 系統架構圖、API 串接說明、修改歷程 (Changelog) 。
 
 todo_progress.md: 拆解後的任務清單，包含 [ ] Todo, [x] Done, [-] In Progress 狀態 。
 
-5. UI/UX 設計準則
+## 5. 已知設計與限制 (Known Issues & Design Choices)
+*   **股息計算**: 目前「累積股息」顯示為全期總和，包含現金股息與 DRIP (股息再投入)。DRIP 交易在 CSV 中會被識別為「股息收入 (Income)」與「股票買入 (Buy)」兩部分。
+*   **本金校正**: 由於 Schwab API 無法取得 2 年前的歷史本金與交易，系統在 `repository.py` 中實作了 `MANUAL_ADJUSTMENTS` 機制，結合歷史 CSV 匯入數據來精確計算「總報酬」。
+*   **多帳戶隔離**: 數據表 (Dividend, TradeHistory) 已引入 `account_hash` 欄位以支援多帳戶數據管理。
+
+## 6. UI/UX 設計準則
 風格: 現代化深色模式 (Dark Mode)，類似彭博終端機或 IB TWS 的專業感。
 
 響應式: 支援 Desktop 為主，但需適配 Tablet。
@@ -123,13 +128,13 @@ todo_progress.md: 拆解後的任務清單，包含 [ ] Todo, [x] Done, [-] In P
 
 卡片式設計: 所有功能模組以 Card 形式呈現，版面乾淨 。
 
-## 6. 開發準則 (Development Guidelines)
+## 7. 開發準則 (Development Guidelines)
 * **Atomic Tasks Only:** 請嚴格遵守「原子化任務」原則。
 * **Small Scope:** 每個 Step 的任務範圍必須限制在 **15 分鐘內** 可完成的工作量。
 * **No Monoliths:** 禁止一次性生成過長的程式碼。如果是複雜功能（如 Dashboard UI），請拆解為：1. 建立空組件, 2. 定義 Type, 3. 實作 API 呼叫, 4. 綁定資料, 5. 美化樣式。
 * **TDD First:** 涉及邏輯計算時，優先撰寫測試案例。
 
-## 7. 修改日誌 (Change Log)
+## 8. 修改日誌 (Change Log)
 - [2026-01-09] [Roo] 修正 AccountRepository 初始化 500 錯誤：更正 __init__ 參數簽章以接收 db Session，並移除全域錯誤實例，確保與 FastAPI 依賴注入機制相容。
 - [2026-01-09] [Roo] 修正帳戶列表 404 錯誤：在 account.py 中新增 /list 路由，並在 MockRepository 與 AccountRepository 中同步實作 get_accounts() 方法，恢復帳戶選擇器功能。
 - [2026-01-09] [Roo] 修復帳戶選擇器消失問題：優化 Dashboard.tsx 的帳戶載入與自動選取邏輯（優先選取第二帳戶），加入關鍵日誌與 Loading 佔位符，確保選取後觸發資料更新。
@@ -158,3 +163,7 @@ todo_progress.md: 拆解後的任務清單，包含 [ ] Todo, [x] Done, [-] In P
     - 修改 `analytics.py` 實作 `HistoricalBalance` (舊資料) 與 `AssetHistory` (Live資料) 的合併查詢邏輯，並統一日期格式為 `YYYY-MM-DD`。
     - 前端圖表加入 `connectNulls` 與智能 Hash 匹配，解決斷點與帳號聯動問題。
     - 調整已實現損益 (Realized P&L) 計算為全期 (All-time) 累計。
+- [2026-01-14] [Roo] 重構 Dashboard KPI：將「已實現損益」更換為「總報酬 (Total Return)」，實作基於淨投入本金的績效計算。
+- [2026-01-14] [Roo] 強化數據精確度：為 `TradeHistory` 引入 `transaction_id` 唯一索引與 `description` 欄位，優化 `JOURNAL` 識別邏輯並杜絕重複分錄。
+- [2026-01-14] [Roo] 本金校正與 CSV 匯入：實作 `MANUAL_ADJUSTMENTS` 補足 TD 歷史本金，並開發專用工具匯入缺失的歷史 CSV 交易分錄。
+- [2026-01-15] [Roo] 深度修復「累積股息」與「數據重複」：移除股息計算的年度限制，改為全期統計。實作 CSV 交易匯入工具 (`import_transactions_csv.py`) 並清理了 133 筆來自 Schwab/TD 重疊的重複紀錄。

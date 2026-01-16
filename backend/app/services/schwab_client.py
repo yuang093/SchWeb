@@ -3,7 +3,7 @@ import pathlib
 import json
 import re
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from app.core.config import settings
 from app.db.database import SessionLocal
 from app.utils.sector_mapper import get_sector as get_fallback_sector
@@ -341,131 +341,212 @@ class SchwabClient:
         """
         try:
             client = self.get_client()
-            # 獲取本年度至今的交易
-            current_year = datetime.now().year
-            from_date = datetime(current_year, 1, 1)
-            to_date = datetime.now()
-
-            resp = client.get_transactions(account_hash, start_date=from_date, end_date=to_date)
-            if resp.status_code != 200:
-                print(f"⚠️ 無法獲取交易紀錄: {resp.text}")
-                return
-
-            transactions = resp.json()
-            if not transactions:
-                return
-
             db = SessionLocal()
             try:
                 from app.models.persistence import Dividend, TradeHistory
-                for tx in transactions:
-                    tx_type = tx.get("type")
-                    # activityId 可用於排重，雖然模型目前沒存 tx_id
-                    tx_date_str = tx.get("settlementDate") or tx.get("tradeDate")
-                    if not tx_date_str: continue
-                    tx_date = datetime.strptime(tx_date_str[:10], "%Y-%m-%d").date()
+                
+                # 循環抓取最近 5 年的交易 (API 限制單次請求範圍不得超過一年)
+                now = datetime.now()
+                # 追蹤本次同步已處理的 ID，避免段落重疊造成的重複
+                processed_ids = set()
+                
+                for i in range(5):
+                    # 每一段抓取一年的資料
+                    # 為了避免重疊，結束日期減去一秒
+                    seg_start = now - timedelta(days=365 * (i + 1))
+                    seg_end = now - timedelta(days=365 * i) - timedelta(seconds=1)
+                    if i == 0: seg_end = now # 第一段包含到現在
                     
-                    # 處理股息 (包含現金股息與再投入)
-                    desc = tx.get("description", "")
-                    is_div_type = tx_type == "DIVIDEND_OR_INTEREST"
-                    is_div_desc = any(k in desc for k in ["Div", "Dividend", "Reinvest", "DRIP"])
+                    print(f"🔄 [DEBUG] 同步交易段落 {i+1}: {seg_start.date()} -> {seg_end.date()}")
+                    resp = client.get_transactions(account_hash, start_date=seg_start, end_date=seg_end)
                     
-                    if is_div_type or is_div_desc:
-                        amount = 0
-                        symbol = "CASH"
+                    if resp.status_code != 200:
+                        print(f"⚠️ 無法獲取交易紀錄 ({seg_start.date()} 區段): {resp.text}")
+                        continue
+
+                    transactions = resp.json()
+                    if not transactions:
+                        continue
+
+                    for tx in transactions:
+                        tx_type = tx.get("type")
+                        tx_id = str(tx.get("activityId")) if tx.get("activityId") else None
                         
-                        # 優先從 transferItems 提取金額
-                        if "transferItems" in tx:
-                            for item in tx["transferItems"]:
-                                amount += abs(float(item.get("amount") or 0))
+                        if tx_id:
+                            if tx_id in processed_ids: continue
+                            processed_ids.add(tx_id)
+                        tx_date_str = tx.get("settlementDate") or tx.get("tradeDate")
+                        if not tx_date_str: continue
+                        tx_date = datetime.strptime(tx_date_str[:10], "%Y-%m-%d").date()
+                        
+                        # 處理股息 (包含現金股息與再投入)
+                        desc = tx.get("description", "")
+                        # 嘗試從其他地方抓描述
+                        if not desc:
+                            if "transactionItem" in tx:
+                                desc = tx["transactionItem"].get("description", "")
+                            elif "transferItems" in tx and len(tx["transferItems"]) > 0:
+                                desc = tx["transferItems"][0].get("description", "")
+                        
+                        is_div_type = tx_type == "DIVIDEND_OR_INTEREST"
+                        is_div_desc = any(k in desc for k in ["Div", "Dividend", "Reinvest", "DRIP"])
+                        
+                        if is_div_type or is_div_desc:
+                            amount = 0
+                            symbol = "CASH"
+                            
+                            # 優先從 transferItems 提取金額
+                            if "transferItems" in tx:
+                                for item in tx["transferItems"]:
+                                    amount += abs(float(item.get("amount") or 0))
+                                    symbol = item.get("instrument", {}).get("symbol", symbol)
+                            
+                            # 如果 transferItems 沒金額，嘗試從 transactionItem (針對 TRADE 型態的 Reinvest)
+                            if amount == 0 and "transactionItem" in tx:
+                                item = tx["transactionItem"]
+                                amount = abs(float(item.get("amount") or 0) * float(item.get("price") or 1))
                                 symbol = item.get("instrument", {}).get("symbol", symbol)
-                        
-                        # 如果 transferItems 沒金額，嘗試從 transactionItem (針對 TRADE 型態的 Reinvest)
-                        if amount == 0 and "transactionItem" in tx:
-                            item = tx["transactionItem"]
-                            amount = abs(float(item.get("amount") or 0) * float(item.get("price") or 1))
-                            symbol = item.get("instrument", {}).get("symbol", symbol)
 
-                        if amount > 0:
-                            # 檢查是否已存在 (以 hash + 日期 + 符號 + 金額排重)
-                            existing = db.query(Dividend).filter(
-                                Dividend.account_hash == account_hash,
-                                Dividend.date == tx_date,
-                                Dividend.symbol == symbol,
-                                Dividend.amount == amount
-                            ).first()
-                            
-                            if not existing:
-                                db.add(Dividend(
-                                    account_hash=account_hash,
-                                    date=tx_date,
-                                    symbol=symbol,
-                                    amount=amount,
-                                    description=desc
-                                ))
-
-                    # 處理交易 (買入/賣出)
-                    elif tx_type == "TRADE":
-                        # 統一處理不同格式的交易項目 (某些 API 回傳 transactionItem, 某些回傳 transferItems)
-                        items = []
-                        if "transactionItem" in tx:
-                            items.append(tx["transactionItem"])
-                        if "transferItems" in tx:
-                            for t_item in tx["transferItems"]:
-                                # 排除貨幣項目，只保留證券項目
-                                if t_item.get("instrument", {}).get("assetType") not in ["CURRENCY", "CASH"]:
-                                    items.append(t_item)
-                        
-                        for item in items:
-                            symbol = item.get("instrument", {}).get("symbol", "UNKNOWN")
-                            qty = float(item.get("amount") or 0)
-                            price = float(item.get("price") or 0)
-                            
-                            # 判定方向 (SELL/BUY)
-                            # 1. 優先看 instruction
-                            instruction = item.get("instruction")
-                            # 2. 若無 instruction，看 positionEffect
-                            if not instruction:
-                                effect = item.get("positionEffect")
-                                if effect == "CLOSING": instruction = "SELL"
-                                elif effect == "OPENING": instruction = "BUY"
-                            
-                            # 3. 最後看 netAmount 與數量的正負號 (錢進來為 SELL)
-                            if not instruction:
-                                instruction = "SELL" if tx.get("netAmount", 0) > 0 else "BUY"
-
-                            if instruction in ["SELL", "BUY"] and qty > 0:
-                                # 檢查是否已重複 (hash + date + symbol + side + qty)
-                                existing = db.query(TradeHistory).filter(
-                                    TradeHistory.account_hash == account_hash,
-                                    TradeHistory.date == tx_date,
-                                    TradeHistory.symbol == symbol,
-                                    TradeHistory.side == instruction,
-                                    TradeHistory.quantity == qty
-                                ).first()
-
+                            if amount > 0:
+                                # 檢查是否已存在
+                                existing = None
+                                if tx_id:
+                                    existing = db.query(Dividend).filter(Dividend.transaction_id == tx_id).first()
+                                
                                 if not existing:
-                                    # 嘗試提取已實現損益 (某些 API 欄位可能會提供)
-                                    realized_pnl = float(tx.get("realizedPnL") or item.get("realizedPnL") or 0.0)
-                                    
-                                    # 如果 realized_pnl 為 0 且是賣出，試著從描述中找看看 (有的話)
-                                    if realized_pnl == 0 and instruction == "SELL":
-                                        match = re.search(r"Realized [^:]+:\s*([+-]?[\d,.]+)", desc)
-                                        if match:
-                                            try:
-                                                realized_pnl = float(match.group(1).replace(',', ''))
-                                            except: pass
-
-                                    db.add(TradeHistory(
+                                    # 回退方案
+                                    existing = db.query(Dividend).filter(
+                                        Dividend.account_hash == account_hash,
+                                        Dividend.date == tx_date,
+                                        Dividend.symbol == symbol,
+                                        Dividend.amount == amount
+                                    ).first()
+                                
+                                if not existing:
+                                    db.add(Dividend(
+                                        transaction_id=tx_id,
                                         account_hash=account_hash,
                                         date=tx_date,
                                         symbol=symbol,
-                                        side=instruction,
-                                        quantity=qty,
-                                        price=price,
-                                        realized_pnl=realized_pnl
+                                        amount=amount,
+                                        description=desc
                                     ))
-                        
+
+                        # 處理交易 (買入/賣出)
+                        elif tx_type == "TRADE":
+                            # 統一處理不同格式的交易項目 (某些 API 回傳 transactionItem, 某些回傳 transferItems)
+                            items = []
+                            if "transactionItem" in tx:
+                                items.append(tx["transactionItem"])
+                            if "transferItems" in tx:
+                                for t_item in tx["transferItems"]:
+                                    # 排除貨幣項目，只保留證券項目
+                                    if t_item.get("instrument", {}).get("assetType") not in ["CURRENCY", "CASH"]:
+                                        items.append(t_item)
+                            
+                            for item in items:
+                                symbol = item.get("instrument", {}).get("symbol", "UNKNOWN")
+                                qty = float(item.get("amount") or 0)
+                                price = float(item.get("price") or 0)
+                                
+                                # 判定方向 (SELL/BUY)
+                                # 1. 優先看 instruction
+                                instruction = item.get("instruction")
+                                # 2. 若無 instruction，看 positionEffect
+                                if not instruction:
+                                    effect = item.get("positionEffect")
+                                    if effect == "CLOSING": instruction = "SELL"
+                                    elif effect == "OPENING": instruction = "BUY"
+                                
+                                # 3. 最後看 netAmount 與數量的正負號 (錢進來為 SELL)
+                                if not instruction:
+                                    instruction = "SELL" if tx.get("netAmount", 0) > 0 else "BUY"
+
+                                if instruction in ["SELL", "BUY"] and qty > 0:
+                                    # 檢查是否已重複 (優先使用 tx_id)
+                                    existing = None
+                                    if tx_id:
+                                        existing = db.query(TradeHistory).filter(TradeHistory.transaction_id == tx_id).first()
+                                    
+                                    if not existing:
+                                        # 回退方案：組合鍵排重
+                                        existing = db.query(TradeHistory).filter(
+                                            TradeHistory.account_hash == account_hash,
+                                            TradeHistory.date == tx_date,
+                                            TradeHistory.symbol == symbol,
+                                            TradeHistory.side == instruction,
+                                            TradeHistory.quantity == qty
+                                        ).first()
+    
+                                    if not existing:
+                                        # 嘗試提取已實現損益 (某些 API 欄位可能會提供)
+                                        realized_pnl = float(tx.get("realizedPnL") or item.get("realizedPnL") or 0.0)
+                                        
+                                        # 如果 realized_pnl 為 0 且是賣出，試著從描述中找看看 (有的話)
+                                        if realized_pnl == 0 and instruction == "SELL":
+                                            match = re.search(r"Realized [^:]+:\s*([+-]?[\d,.]+)", desc)
+                                            if match:
+                                                try:
+                                                    realized_pnl = float(match.group(1).replace(',', ''))
+                                                except: pass
+                                            else:
+                                                db.add(TradeHistory(
+                                            account_hash=account_hash,
+                                            date=tx_date,
+                                            symbol=symbol,
+                                            transaction_id=tx_id,
+                                            side=instruction,
+                                            quantity=qty,
+                                            price=price,
+                                            realized_pnl=realized_pnl,
+                                            description=desc
+                                        ))
+                            
+                        # 處理轉帳 (入金/出金)
+                        else:
+                            desc = desc.upper()
+                            amount = abs(tx.get("netAmount", 0))
+                            if amount > 0:
+                                side = None
+                                # 排除來自 TD Ameritrade 的初始移轉紀錄 (避免與手動校正重複計算)
+                                if any(k in desc for k in ["TD AMERITRADE", "TOA ACAT"]):
+                                    side = None
+                                # 入金邏輯
+                                elif (tx_type == 'WIRE_IN') or ('FUNDS RECEIVED' in desc) or ('ACH RECEIPT' in desc):
+                                    side = 'DEPOSIT'
+                                # 出金邏輯
+                                elif (tx_type == 'CASH_DISBURSEMENT') or ('ATM' in desc) or ('WITHDRAWAL' in desc):
+                                    side = 'WITHDRAWAL'
+                                # 內部轉帳 (Journal) - 區分方向 (排除非資金性質的帳務調整)
+                                elif tx_type == 'JOURNAL':
+                                    # 必須有明確的轉入/轉出關鍵字，且排除到期或再投資
+                                    if any(k in desc for k in ['MATURED', 'REINVEST', 'DIVIDEND']):
+                                        side = None
+                                    elif any(k in desc for k in ['TRF FUNDS FRM', 'JOURNAL FRM']):
+                                        side = 'DEPOSIT'
+                                    elif any(k in desc for k in ['TRF FUNDS TO', 'JOURNAL TO']):
+                                        side = 'WITHDRAWAL'
+                                
+                                if side:
+                                    # 檢查是否已重複 (優先使用 tx_id)
+                                    existing = None
+                                    if tx_id:
+                                        existing = db.query(TradeHistory).filter(TradeHistory.transaction_id == tx_id).first()
+                                    
+                                    if not existing:
+                                        db.add(TradeHistory(
+                                            transaction_id=tx_id,
+                                            account_hash=account_hash,
+                                            date=tx_date,
+                                            symbol='CASH',
+                                            side=side,
+                                            quantity=amount,
+                                            price=1.0,
+                                            realized_pnl=0.0,
+                                            description=desc
+                                        ))
+    
+                    # 結束所有段落後一次提交
                 db.commit()
             except Exception as e:
                 print(f"❌ [ERROR] Processing transactions fail: {e}")

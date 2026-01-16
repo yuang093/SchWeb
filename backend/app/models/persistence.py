@@ -42,6 +42,7 @@ class Dividend(Base):
     __tablename__ = "dividends"
 
     id = Column(Integer, primary_key=True, index=True)
+    transaction_id = Column(String, index=True, unique=True, nullable=True)
     account_hash = Column(String, index=True, nullable=True) # 關聯帳戶
     date = Column(Date, index=True, nullable=False)
     symbol = Column(String, index=True, nullable=False)
@@ -56,15 +57,17 @@ class TradeHistory(Base):
     __tablename__ = "trade_history"
 
     id = Column(Integer, primary_key=True, index=True)
+    transaction_id = Column(String, index=True, nullable=True) # Schwab activityId
     account_hash = Column(String, index=True, nullable=True) # 關聯帳戶
     date = Column(Date, index=True, nullable=False)
     symbol = Column(String, index=True, nullable=False)
-    side = Column(String, nullable=False) # 'BUY' or 'SELL'
+    side = Column(String, nullable=False) # 'BUY', 'SELL', 'DEPOSIT', 'WITHDRAWAL'
     quantity = Column(Float, nullable=False)
     price = Column(Float, nullable=False)
     average_cost = Column(Float) # 賣出時的平均成本，用於計算已實現損益
     realized_pnl = Column(Float) # 賣出時產生的損益
     commission = Column(Float, default=0.0)
+    description = Column(String) # 交易描述
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 class HistoricalBalance(Base):
