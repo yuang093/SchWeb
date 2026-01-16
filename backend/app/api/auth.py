@@ -1,9 +1,24 @@
 from fastapi import APIRouter, Depends
 from app.core.config import settings
 from app.services.schwab_auth import fetch_token_from_schwab, token_storage
+from app.services.schwab_client import schwab_client
 import urllib.parse
 
 router = APIRouter()
+
+@router.get("/status")
+def get_auth_status():
+    """
+    回傳當前是否已完成嘉信連線
+    """
+    try:
+        # 檢查是否有 token
+        token = schwab_client._load_token_from_db()
+        if token:
+            return {"authenticated": True}
+    except Exception:
+        pass
+    return {"authenticated": False}
 
 @router.get("/login")
 def get_login_url():

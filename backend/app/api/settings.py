@@ -68,3 +68,25 @@ def update_settings(update_data: SettingsUpdate, db: Session = Depends(get_db)):
     schwab_client._refresh_config()
     
     return {"message": "Settings updated successfully"}
+
+from fastapi import UploadFile, File
+from app.services.importer import importer_service
+
+@router.post("/import-csv")
+async def import_csv(file: UploadFile = File(...)):
+    """
+    接收上傳的 CSV 檔案並進行資料匯入
+    """
+    if not file.filename.lower().endswith('.csv'):
+        raise HTTPException(status_code=400, detail="只支援 CSV 檔案格式")
+    
+    try:
+        content = await file.read()
+        result = importer_service.process_csv(content, file.filename)
+        
+        if not result.get("success"):
+            raise HTTPException(status_code=400, detail=result.get("error", "匯入失敗"))
+            
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"伺服器錯誤: {str(e)}")

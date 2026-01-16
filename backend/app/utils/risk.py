@@ -1,53 +1,51 @@
 import pandas as pd
 import numpy as np
-import yfinance as yf
+import os
 from datetime import datetime, timedelta
+from app.services.schwab_client import schwab_client
 
-def get_market_returns(start_date, end_date, dates_index):
+def get_market_returns(start_date, end_date, dates_index=None):
     """
-    獲取市場 (SPY) 報酬率，若失敗則回傳模擬數據
+    獲取市場 (SPY) 報酬率。
+    優先使用 Schwab API，若失敗則提供中性 Fallback。
     """
     try:
-        # 嘗試從 yfinance 下載
-        # 抓取較寬的時間範圍以確保對齊
-        spy_start = (datetime.strptime(start_date, '%Y-%m-%d') - timedelta(days=7)).strftime('%Y-%m-%d')
-        spy_end = (datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=7)).strftime('%Y-%m-%d')
+        print(f"DEBUG: Fetching SPY history from Schwab API")
+        # 抓取 1 年數據 (預設)
+        resp_data = schwab_client.get_price_history("SPY", period_type='year', period=1)
         
-        # 嘗試解決 SSL 問題並增加超時
-        spy_data = yf.download("SPY", start=spy_start, end=spy_end, progress=False, timeout=10)
-        
-        if not spy_data.empty:
-            # 統一移除時區並轉為 date 物件
-            if spy_data.index.tz is not None:
-                spy_data.index = spy_data.index.tz_convert(None).date
-            else:
-                spy_data.index = spy_data.index.tz_localize(None).date
-            
-            # 處理可能的多重索引 (MultiIndex)
-            if isinstance(spy_data.columns, pd.MultiIndex):
-                spy_prices = spy_data['Adj Close'].iloc[:, 0]
-            else:
-                spy_prices = spy_data['Adj Close']
+        if resp_data and "candles" in resp_data:
+            candles = resp_data["candles"]
+            if candles:
+                # 轉換為 DataFrame
+                df_spy = pd.DataFrame(candles)
+                # Schwab 回傳的 datetime 是毫秒時間戳
+                df_spy['date'] = pd.to_datetime(df_spy['datetime'], unit='ms').dt.date
+                df_spy = df_spy.set_index('date')
                 
-            spy_returns = spy_prices.pct_change().dropna()
-            
-            # 如果成功抓到足夠數據，直接回傳
-            if len(spy_returns) >= 5:
-                return spy_returns
+                spy_prices = df_spy['close']
+                
+                # 轉為每日頻率並填充缺失值（處理市場休市）
+                spy_prices.index = pd.to_datetime(spy_prices.index)
+                spy_prices = spy_prices.resample('D').ffill()
+                
+                spy_returns = spy_prices.pct_change().dropna()
+                
+                # 轉回 date 物件索引以便與資料庫對齊
+                spy_returns.index = spy_returns.index.date
+                
+                if len(spy_returns) >= 2:
+                    return spy_returns
         
-        raise ValueError("Empty or insufficient SPY data from yfinance")
+        raise ValueError("Empty or insufficient SPY data from Schwab API")
 
     except Exception as e:
-        print(f"WARNING: Failed to download SPY data ({str(e)}). Using simulated market data for fallback.")
+        print(f"WARNING: Failed to get SPY from Schwab ({str(e)}). Using fallback.")
         
-        # Fallback: 生成模擬大盤數據 (Random Walk)
-        # 建立與使用者資產歷史日期完全一致的索引
-        np.random.seed(42) # 固定種子確保數值穩定
-        simulated_returns = pd.Series(
-            np.random.normal(0.0005, 0.01, len(dates_index)), 
-            index=dates_index
-        )
-        return simulated_returns
+        # Fallback: 如果有提供 dates_index，則生成 0 報酬率（中性）而不是隨機
+        if dates_index is not None and len(dates_index) > 0:
+            return pd.Series(0.0, index=dates_index)
+        return pd.Series()
 
 def calculate_weighted_beta(holdings, total_value):
     """

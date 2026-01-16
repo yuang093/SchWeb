@@ -555,5 +555,32 @@ class SchwabClient:
                 db.close()
         except Exception as e:
             print(f"❌ [ERROR] sync_transactions 異常: {e}")
-
+            
+    def get_price_history(self, symbol: str,
+                          period_type: str = 'year', period: int = 1,
+                          frequency_type: str = 'daily', frequency: int = 1):
+        """
+        獲取 Market Data Price History
+        API Endpoint: /marketdata/v1/pricehistory
+        """
+        try:
+            client = self.get_client()
+            # schwab-py 封裝了此方法
+            resp = client.get_price_history(
+                symbol,
+                period_type=client.PriceHistory.PeriodType(period_type),
+                period=client.PriceHistory.Period(period),
+                frequency_type=client.PriceHistory.FrequencyType(frequency_type),
+                frequency=client.PriceHistory.Frequency(frequency)
+            )
+            
+            if resp.status_code != 200:
+                print(f"⚠️ 獲取價格歷史失敗 ({symbol}): {resp.text}")
+                return None
+                
+            return resp.json()
+        except Exception as e:
+            print(f"❌ [ERROR] get_price_history 異常 ({symbol}): {e}")
+            return None
+ 
 schwab_client = SchwabClient()

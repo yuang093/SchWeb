@@ -235,6 +235,29 @@ class AccountRepository:
         finally:
             db.close()
 
+    def get_account_performance_meta(self, account_hash: str) -> Dict[str, Any]:
+        """
+        獲取帳戶績效元數據 (總報酬率與起始日期) 用於風險分析。
+        """
+        db = SessionLocal()
+        try:
+            # 1. 獲取最早交易日期
+            first_tx = db.query(func.min(TradeHistory.date)).filter(TradeHistory.account_hash == account_hash).scalar()
+            
+            # 2. 獲取當前總報酬率 (借用現有邏輯)
+            summary = self.get_account_summary(account_hash)
+            total_return_pct = summary.get("total_return_pct", 0.0) / 100.0 # 轉為小數
+            
+            return {
+                "first_transaction_date": first_tx,
+                "total_return": total_return_pct
+            }
+        except Exception as e:
+            print(f"Error getting performance meta: {e}")
+            return {"first_transaction_date": None, "total_return": 0.0}
+        finally:
+            db.close()
+
     def _load_mock_data(self) -> Dict[str, Any]:
         try:
             if not self.mock_file_path.exists():

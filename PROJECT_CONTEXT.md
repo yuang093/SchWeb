@@ -9,7 +9,7 @@ Backend: Python (FastAPI), Pandas (數據分析), NumPy (金融計算).
 
 Database: SQLite/PostgreSQL (儲存歷史快照、交易記錄).
 
-External API: Schwab Trader API (OAuth 2.0).
+External API: Schwab Trader API (OAuth 2.0, Market Data API).
 
 Docs: Markdown (overview.md, todo_progress.md).
 
@@ -74,16 +74,16 @@ Demo 模式: 提供一個切換開關，開啟時使用預設的 Mock Data (假�
 細分產業圖 (Industry Group): 顯示更細項的產業曝險 (如 Semiconductor, Software) 。
 
 3.4 風險分析 (Risk Analysis)
-此模組需運用 Python numpy/scipy 進行計算：
+此模組需運用 Python pandas/numpy 進行計算：
 
 
-波動性指標: 計算投資組合的年化波動率 (Annualized Volatility) 。
+波動性指標: 計算投資組合的年化波動率，採 Business Day Resampling 並過濾異常數據。
 
 
-風險值 (VaR): 計算 Value at Risk (95% 或 99% 信賴區間)，預估極端情況下的最大虧損 。
+風險值 (VaR): 使用歷史模擬法 (Historical Simulation) 計算 95% 信心水準下的風險值。
 
 
-Beta 係數: 計算投資組合相對於大盤 (SPY) 的 Beta 值，衡量系統性風險 。
+Beta 係數: 基於過去 1 年 Schwab Market Data 計算相對於 SPY 的迴歸 Beta，並具備權重 Beta 備援。
 
 
 多空分析: 顯示 多頭 (Long) vs 空頭 (Short) 的資金比例 。
@@ -120,7 +120,13 @@ todo_progress.md: 拆解後的任務清單，包含 [ ] Todo, [x] Done, [-] In P
 *   **本金校正**: 由於 Schwab API 無法取得 2 年前的歷史本金與交易，系統在 `repository.py` 中實作了 `MANUAL_ADJUSTMENTS` 機制，結合歷史 CSV 匯入數據來精確計算「總報酬」。
 *   **多帳戶隔離**: 數據表 (Dividend, TradeHistory) 已引入 `account_hash` 欄位以支援多帳戶數據管理。
 
-## 6. UI/UX 設計準則
+## 6. 風險分析邏輯 (Risk Analysis Logic)
+*   **年化報酬率 (Annual Return)**: 採「總報酬年化法 (Total Return Annualization)」，基於本金校正後的總報酬與持有天數反推，排除資金流雜訊。
+*   **最大回撤 (Max Drawdown)**: 基於「幾何累計收益率 (Geometric Cumulative Returns)」計算，確保帳戶間大額轉帳不會造成虛假回撤。
+*   **風險值 (VaR)**: 採「參數法 (Parametric VaR)」，以 95% 信心水準結合實際年化波動率估算單日最大預期損失。
+*   **數據過濾**: 自動識別並歸零日報酬率超過 10% 的異常值（判定為 Net Flow 資金異動）。
+
+## 7. UI/UX 設計準則
 風格: 現代化深色模式 (Dark Mode)，類似彭博終端機或 IB TWS 的專業感。
 
 響應式: 支援 Desktop 為主，但需適配 Tablet。
@@ -167,3 +173,6 @@ todo_progress.md: 拆解後的任務清單，包含 [ ] Todo, [x] Done, [-] In P
 - [2026-01-14] [Roo] 強化數據精確度：為 `TradeHistory` 引入 `transaction_id` 唯一索引與 `description` 欄位，優化 `JOURNAL` 識別邏輯並杜絕重複分錄。
 - [2026-01-14] [Roo] 本金校正與 CSV 匯入：實作 `MANUAL_ADJUSTMENTS` 補足 TD 歷史本金，並開發專用工具匯入缺失的歷史 CSV 交易分錄。
 - [2026-01-15] [Roo] 深度修復「累積股息」與「數據重複」：移除股息計算的年度限制，改為全期統計。實作 CSV 交易匯入工具 (`import_transactions_csv.py`) 並清理了 133 筆來自 Schwab/TD 重疊的重複紀錄。
+- [2026-01-16] [Roo] 風險指標修復 Phase 1：數據源遷移至 Schwab API 解決 SSL 驗證問題；實作 Business Day Resampling 修復 Volatility 指標。
+- [2026-01-16] [Roo] 風險指標修復 Phase 2：重構 Annual Return (Total Return 法) 與 Max Drawdown (幾何收益率法)，徹底解決大額轉帳導致的指標偏差；VaR 改用參數法提升科學性。
+- [2026-01-16] [Roo] CSV 匯入功能與系統設定優化：實作 `ImporterService` 處理歷史數據匯入，Settings 頁面新增 Drag & Drop 上傳與「連接/重新授權」按鈕。

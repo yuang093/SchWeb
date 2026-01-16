@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     # Demo Mode
     DEMO_MODE: bool = True
     
+    # Risk Metrics
+    RISK_FREE_RATE: float = 0.04
+    
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         print(f"🔥 [CONFIG] 最終生效模式 APP_MODE = {self.APP_MODE}")
