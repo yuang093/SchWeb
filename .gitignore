@@ -14,6 +14,10 @@ venv/
 token_temp.json
 *.json
 !mock_data/*.json  # (除了 mock_data 裡的 json 可以上傳)
+!**/package.json
+!**/package-lock.json
+!**/tsconfig.json
+!**/tsconfig.node.json
 
 # Node.js / 前端
 node_modules/
