@@ -16,7 +16,7 @@ Docs: Markdown (overview.md, todo_progress.md).
 3. 功能需求清單 (Feature Requirements)
 3.1 核心系統與基礎設施 (Infrastructure)
 
-身份驗證 (Auth): 實作 Schwab OAuth 流程登入，包含 Token 管理與自動刷新 (Refresh Token) 。
+身份驗證 (Auth): 實作 Schwab OAuth 流程登入，包含 Token 管理、自動刷新 (Refresh Token) 、連線狀態監控及一鍵重新授權流程。
 
 
 數據整合 (Data Integration): 聚合帳戶餘額、持倉、訂單狀態 。
