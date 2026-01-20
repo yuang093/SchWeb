@@ -176,3 +176,13 @@ todo_progress.md: 拆解後的任務清單，包含 [ ] Todo, [x] Done, [-] In P
 - [2026-01-16] [Roo] 風險指標修復 Phase 1：數據源遷移至 Schwab API 解決 SSL 驗證問題；實作 Business Day Resampling 修復 Volatility 指標。
 - [2026-01-16] [Roo] 風險指標修復 Phase 2：重構 Annual Return (Total Return 法) 與 Max Drawdown (幾何收益率法)，徹底解決大額轉帳導致的指標偏差；VaR 改用參數法提升科學性。
 - [2026-01-16] [Roo] CSV 匯入功能與系統設定優化：實作 `ImporterService` 處理歷史數據匯入，Settings 頁面新增 Drag & Drop 上傳與「連接/重新授權」按鈕。
+
+- [2026-01-20] [Roo] 系統移植與 OAuth 流程深度優化 (New Computer Setup):
+    - 環境修復: 解決 Python 3.14 環境下 pip 與 sqlalchemy 遺失導致資料庫無法讀取的問題。
+    - 授權流程現代化: 
+        - 實作「彈窗授權 (Pop-up Window)」與「手動貼入 URL/Code」介面，解決本地開發環境 (127.0.0.1) 無法被公網回傳授權碼的限制。
+        - 在 `auth_callback` 路由中實作智慧解析邏輯，支援直接貼入完整 Redirect URL 或單獨代碼。
+    - 憑證讀取韌性:
+        - 建立 `DB > .env` 讀取優先順序，確保網頁設定值優先於環境變數。
+        - 實作 `reload_token()` 機制，當新的 Token 存入資料庫後自動刷新後端 `schwab_client` 緩存，實現「免重啟伺服器」即時生效。
+    - 連線診斷強化: 更新 `get_auth_status` 為「實時驗證」模式，透過真實 API 呼叫 (get_linked_accounts) 偵測 Token 是否過期，徹底解決燈號顯示「假陽性」問題。

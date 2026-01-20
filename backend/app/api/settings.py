@@ -31,8 +31,18 @@ def get_settings(db: Session = Depends(get_db)):
         else:
             # 嘗試從環境變數讀取（僅作為 fallback）
             from app.core.config import settings as app_settings
-            val = getattr(app_settings, key, "")
+            # 注意：這裡同時檢查 SCHWAB_API_XXX 和 SCHWAB_APP_XXX
+            val = getattr(app_settings, key, None)
+            if val is None and key == "SCHWAB_API_KEY": val = app_settings.SCHWAB_APP_KEY
+            if val is None and key == "SCHWAB_API_SECRET": val = app_settings.SCHWAB_APP_SECRET
+            
             if val:
+                # 自動遷移到資料庫，以便後續管理
+                print(f"🚀 [SETTINGS] Migrating {key} from environment to Database")
+                new_setting = SystemSetting(key=key, value=val)
+                db.add(new_setting)
+                db.commit()
+                
                 if key in ["SCHWAB_API_KEY", "SCHWAB_API_SECRET"]:
                     results[key] = mask_value(val)
                 else:
@@ -47,12 +57,15 @@ def get_settings(db: Session = Depends(get_db)):
 def update_settings(update_data: SettingsUpdate, db: Session = Depends(get_db)):
     for key, value in update_data.settings.items():
         if not value:
+            print(f"🔍 [DEBUG] Skipping empty value for key: {key}")
             continue
             
         # 如果使用者輸入的是遮罩後的字串 (全是 * 或含有 * 且長度跟原本可能不符)，則不更新
         if "*" in value:
+            print(f"🔍 [DEBUG] Skipping masked value for key: {key}")
             continue
 
+        print(f"🔍 [DEBUG] Updating key: {key} with value: {value[:4]}***")
         setting = db.query(SystemSetting).filter(SystemSetting.key == key).first()
         if setting:
             setting.value = value

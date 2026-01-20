@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import MainLayout from '../components/layout/MainLayout';
 import { getSettings, updateSettings, importCsv } from '../api/settings';
-import { getAuthStatus, getLoginUrl } from '../api/auth';
-import { Save, Shield, Key, Link as LinkIcon, CheckCircle2, Upload, FileText, AlertCircle, Loader2, ExternalLink } from 'lucide-react';
+import { getAuthStatus, getLoginUrl, submitAuthCode } from '../api/auth';
+import { Save, Shield, Key, Link as LinkIcon, CheckCircle2, Upload, FileText, AlertCircle, Loader2, ExternalLink, Send } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 
 export default function Settings() {
@@ -27,6 +27,10 @@ export default function Settings() {
     SCHWAB_API_SECRET: '',
     SCHWAB_REDIRECT_URI: '',
   });
+
+  const [authCode, setAuthCode] = useState('');
+  const [showCodeInput, setShowCodeInput] = useState(false);
+  const [submittingCode, setSubmittingCode] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
 
@@ -83,13 +87,43 @@ export default function Settings() {
     try {
       const { login_url } = await getLoginUrl();
       if (login_url) {
-        window.location.href = login_url;
+        // 使用 window.open 開啟授權網址，避免當前頁面被跳轉
+        window.open(login_url, '_blank');
+        setShowCodeInput(true);
       } else {
         alert('無法獲取授權網址，請檢查 API Key 設定。');
       }
     } catch (error) {
       console.error('Failed to get login URL:', error);
       alert('請求失敗，請稍後再試。');
+    }
+  };
+
+  const handleSubmitCode = async () => {
+    if (!authCode.trim()) {
+      alert('請輸入授權代碼或網址');
+      return;
+    }
+    
+    setSubmittingCode(true);
+    try {
+      const result = await submitAuthCode(authCode.trim());
+      alert(result.message || '授權成功！');
+      
+      // 重新檢查認證狀態
+      const authData = await getAuthStatus();
+      setIsAuthenticated(authData.authenticated);
+      
+      if (authData.authenticated) {
+        setShowCodeInput(false);
+        setAuthCode('');
+      }
+    } catch (error: any) {
+      console.error('Auth failed:', error);
+      const errMsg = error.response?.data?.error || '請檢查代碼是否正確或已過期';
+      alert('授權失敗：' + errMsg);
+    } finally {
+      setSubmittingCode(false);
     }
   };
 
@@ -274,6 +308,41 @@ export default function Settings() {
                     )}
                   </button>
                 </div>
+
+                {/* 手動輸入授權碼區塊 */}
+                {(showCodeInput || !isAuthenticated) && (
+                  <div className="mt-4 p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-4 animate-in fade-in slide-in-from-top-2">
+                    <div className="flex items-start gap-3">
+                      <AlertCircle className="text-blue-500 shrink-0 mt-0.5" size={16} />
+                      <p className="text-xs text-slate-400 leading-relaxed">
+                        授權完成後，嘉信會跳轉回您的 Redirect URI。請複製跳轉後網址中的 <code className="text-blue-400 font-mono">code</code> 參數，或直接將**完整網址**貼入下方輸入框。
+                      </p>
+                    </div>
+                    
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={authCode}
+                        onChange={(e) => setAuthCode(e.target.value)}
+                        placeholder="在此處貼入 code 或跳轉後的網址..."
+                        className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleSubmitCode}
+                        disabled={submittingCode || !authCode}
+                        className="bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-500 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all"
+                      >
+                        {submittingCode ? (
+                          <Loader2 size={16} className="animate-spin" />
+                        ) : (
+                          <Send size={16} />
+                        )}
+                        確認授權
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </form>

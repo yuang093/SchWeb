@@ -1,5 +1,10 @@
 import api from './client';
 
+export const submitAuthCode = async (code: string) => {
+  const response = await api.get(`/auth/callback?code=${encodeURIComponent(code)}`);
+  return response.data;
+};
+
 export const getAuthStatus = async () => {
   const response = await api.get('/auth/status');
   return response.data;

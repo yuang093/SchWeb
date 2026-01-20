@@ -157,6 +157,14 @@ class SchwabClient:
         try: return float(val) if val is not None else None
         except: return None
 
+    def reload_token(self):
+        """
+        強制清除記憶體中的 client 緩存，下次請求時會重新從資料庫讀取 Token
+        """
+        print("🔄 [DEBUG] Reloading token from database...")
+        self._client = None
+        self._refresh_config() # 同步刷新 API Key 設定
+
     def get_client(self):
         self._migrate_token_file_if_needed()
         if self._client: return self._client
@@ -166,18 +174,33 @@ class SchwabClient:
             raise FileNotFoundError("找不到有效 Token，請先執行授權。")
 
         # 使用 client_from_access_functions，注意其內部會對 token_read_func 的結果做索引 ['token']
-        self._client = schwab.auth.client_from_access_functions(
-            self.api_key,
-            self.api_secret,
-            token_read_func=self._load_token_from_db,
-            token_write_func=self._save_token_to_db
-        )
+        try:
+            self._client = schwab.auth.client_from_access_functions(
+                self.api_key,
+                self.api_secret,
+                token_read_func=self._load_token_from_db,
+                token_write_func=self._save_token_to_db
+            )
+        except Exception as e:
+            # 如果初始化失敗（例如 Token 格式錯誤），嘗試清除快照
+            print(f"⚠️ [DEBUG] Client initialization failed: {e}")
+            self._client = None
+            raise
+            
         return self._client
 
     def get_linked_accounts(self) -> List[Dict[str, Any]]:
         try:
             client = self.get_client()
             resp = client.get_account_numbers()
+            
+            # 如果發生 Token 錯誤，嘗試重新載入並重試一次
+            if resp.status_code == 400 and "unsupported_token_type" in resp.text:
+                print("⚠️ [DEBUG] Unsupported token type detected, retrying with fresh token...")
+                self.reload_token()
+                client = self.get_client()
+                resp = client.get_account_numbers()
+
             if resp.status_code != 200: return []
             raw_data = resp.json()
             accounts_list = raw_data if isinstance(raw_data, list) else [raw_data]
@@ -199,6 +222,14 @@ class SchwabClient:
                 account_hash = accs[0]['hash_value']
 
             resp = client.get_account(account_hash, fields=client.Account.Fields.POSITIONS)
+            
+            # Token 錯誤處理與重試
+            if resp.status_code == 400 and "unsupported_token_type" in resp.text:
+                print("⚠️ [DEBUG] Unsupported token type in get_account, retrying...")
+                self.reload_token()
+                client = self.get_client()
+                resp = client.get_account(account_hash, fields=client.Account.Fields.POSITIONS)
+
             if resp.status_code != 200: return {"error": f"獲取帳戶詳情失敗: {resp.text}"}
             
             raw_details = resp.json()
