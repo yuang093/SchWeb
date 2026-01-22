@@ -176,7 +176,6 @@ todo_progress.md: 拆解後的任務清單，包含 [ ] Todo, [x] Done, [-] In P
 - [2026-01-16] [Roo] 風險指標修復 Phase 1：數據源遷移至 Schwab API 解決 SSL 驗證問題；實作 Business Day Resampling 修復 Volatility 指標。
 - [2026-01-16] [Roo] 風險指標修復 Phase 2：重構 Annual Return (Total Return 法) 與 Max Drawdown (幾何收益率法)，徹底解決大額轉帳導致的指標偏差；VaR 改用參數法提升科學性。
 - [2026-01-16] [Roo] CSV 匯入功能與系統設定優化：實作 `ImporterService` 處理歷史數據匯入，Settings 頁面新增 Drag & Drop 上傳與「連接/重新授權」按鈕。
-
 - [2026-01-20] [Roo] 系統移植與 OAuth 流程深度優化 (New Computer Setup):
     - 環境修復: 解決 Python 3.14 環境下 pip 與 sqlalchemy 遺失導致資料庫無法讀取的問題。
     - 授權流程現代化: 
@@ -186,3 +185,29 @@ todo_progress.md: 拆解後的任務清單，包含 [ ] Todo, [x] Done, [-] In P
         - 建立 `DB > .env` 讀取優先順序，確保網頁設定值優先於環境變數。
         - 實作 `reload_token()` 機制，當新的 Token 存入資料庫後自動刷新後端 `schwab_client` 緩存，實現「免重啟伺服器」即時生效。
     - 連線診斷強化: 更新 `get_auth_status` 為「實時驗證」模式，透過真實 API 呼叫 (get_linked_accounts) 偵測 Token 是否過期，徹底解決燈號顯示「假陽性」問題。
+## 2026-01-22 - 歷史資料匯入與圖表修復 (Stage 1 完成)
+1. 修正 CSV 匯入器 (importer.py)：
+   - 新增支援標準 Balances 格式 (識別 Amount 欄位)。
+   - 增加數值清洗邏輯 (移除 $, ", ,)。
+   - 修復資料庫交易問題：補上 db.commit()，並加入重複資料檢測 (Upsert)，確保 700+ 筆歷史資料正確寫入 historical_balances 表。
+2. 修正圖表 API (analytics.py)：
+   - 實作資料合併：同時查詢 AssetHistory (Live) 與 HistoricalBalance (CSV)。
+   - 設定優先權：若同一天有重複數據，以 Live 數據為準。
+3. 目前狀態：
+   - 歷史資產走勢圖已能完整顯示。
+   - 新舊電腦遷移完成，環境獨立運作中。
+4. 目前狀態：
+   - 歷史資產走勢圖已能完整顯示。
+   - 新舊電腦遷移完成，環境獨立運作中。
+
+## 2026-01-22 - Stage 2: 自動快照功能 (完工)
+1. 功能實作 (schwab_client.py)：
+   - 在 get_account_summary 與 get_account_positions 流程中加入自動存檔邏輯。
+   - 實作 Upsert (Insert/Update) 機制：若當日已有紀錄則更新數值，無紀錄則新增。
+   - 加入明確的 db.commit() 與 Log 監控 (📸, ✅)，確保數據持久化。
+2. 系統最終狀態：
+   - [CSV 匯入]：修復完成，可正確解析並匯入歷史 Balances。
+   - [圖表顯示]：後端已合併 Live 與 CSV 歷史數據，走勢圖完整連貫。
+   - [自動化]：Live Mode 下，每日資產淨值會自動寫入資料庫，無需手動干預。
+
+

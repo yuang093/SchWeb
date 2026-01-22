@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
 from sqlalchemy.orm import Session
 from app.db.database import SessionLocal
-from app.models.persistence import Dividend, TradeHistory, AssetHistory, HoldingSnapshot
+from app.models.persistence import Dividend, TradeHistory, AssetHistory, HoldingSnapshot, HistoricalBalance
 from app.services.schwab_client import schwab_client
 
 class ImporterService:
@@ -18,7 +18,8 @@ class ImporterService:
     def _parse_amount(self, amount_str: Optional[str]) -> float:
         if not amount_str:
             return 0.0
-        clean_str = str(amount_str).replace('$', '').replace(',', '').strip()
+        # 移除引號、金錢符號、逗號
+        clean_str = str(amount_str).replace('"', '').replace('$', '').replace(',', '').strip()
         try:
             return float(clean_str)
         except ValueError:
@@ -29,7 +30,8 @@ class ImporterService:
             return None
         try:
             # 嘉信 CSV 可能包含 "MM/DD/YYYY" 或 "MM/DD/YYYY as of ..."
-            clean_date = str(date_str).split(' as of ')[0].strip()
+            # 移除引號
+            clean_date = str(date_str).replace('"', '').split(' as of ')[0].strip()
             return datetime.strptime(clean_date, '%m/%d/%Y').date()
         except ValueError:
             try:
@@ -64,7 +66,7 @@ class ImporterService:
         # 簡單判斷是 Transactions 還是 Balances (Positions)
         if "Transactions" in filename or "Action" in content_str:
             return self._import_transactions(content_str, account_hash)
-        elif "Balances" in filename or "Market Value" in content_str:
+        elif "Balances" in filename or "Market Value" in content_str or "Amount" in content_str:
             return self._import_balances(content_str, account_hash)
         else:
             return {"success": False, "error": "無法判斷 CSV 類型 (Transactions 或 Balances)"}
@@ -159,33 +161,53 @@ class ImporterService:
             db.close()
 
     def _import_balances(self, csv_content: str, account_hash: str) -> Dict[str, Any]:
-        """處理資產歷史匯入 (Balances CSV)"""
+        """
+        處理資產歷史匯入 (Balances CSV)
+        將資料寫入 HistoricalBalance 表，並以 account_hash 進行關聯
+        """
         db = SessionLocal()
         count = 0
+        skipped = 0
         try:
             reader = csv.DictReader(io.StringIO(csv_content))
             for row in reader:
-                # 嘉信 Balances CSV 通常有 'Date' 和 'Market Value' 欄位
+                # 嘉信 Balances CSV 通常有 'Date' 和 'Market Value' 或 'Amount' 欄位
                 date_val = row.get('Date')
-                total_val = self._parse_amount(row.get('Market Value'))
-                cash_val = self._parse_amount(row.get('Cash', '0')) # 有些格式可能有 Cash
+                # 支援多種金額欄位名稱
+                total_val = self._parse_amount(row.get('Market Value') or row.get('Amount'))
                 
                 date_obj = self._parse_date(date_val)
-                if date_obj and total_val > 0:
-                    existing = db.query(AssetHistory).filter(AssetHistory.date == date_obj).first()
-                    if existing:
-                        existing.total_value = total_val
-                        if cash_val > 0: existing.cash_balance = cash_val
+                if not date_obj or total_val <= 0:
+                    continue
+
+                # 檢查是否已存在該帳戶在該日期的紀錄 (避免重複匯入)
+                existing = db.query(HistoricalBalance).filter(
+                    HistoricalBalance.date == date_obj,
+                    HistoricalBalance.account_id == account_hash
+                ).first()
+
+                if existing:
+                    # 如果已存在且數值不同，則更新
+                    if existing.balance != total_val:
+                        existing.balance = total_val
+                        count += 1
                     else:
-                        db.add(AssetHistory(
-                            date=date_obj,
-                            total_value=total_val,
-                            cash_balance=cash_val
-                        ))
+                        skipped += 1
+                else:
+                    # 建立新紀錄
+                    db.add(HistoricalBalance(
+                        date=date_obj,
+                        account_id=account_hash,
+                        balance=total_val
+                    ))
                     count += 1
+
+            # 確保所有變更都提交
             db.commit()
-            return {"success": True, "stats": {"history_records": count}}
+            print(f"🚀 [IMPORTER] Balances imported: {count} updated/added, {skipped} skipped.")
+            return {"success": True, "stats": {"history_records": count, "skipped": skipped}}
         except Exception as e:
+            print(f"❌ [IMPORTER] Error importing balances: {e}")
             db.rollback()
             return {"success": False, "error": str(e)}
         finally:

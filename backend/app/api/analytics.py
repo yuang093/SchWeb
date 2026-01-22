@@ -52,22 +52,25 @@ def get_historical_net_worth(db: Session = Depends(get_db)):
             data_by_date[date_str] = {
                 "date": date_str,
                 "total": float(r.total_value),
-                "total_sync": float(r.total_value) # 使用更具體的 Key
+                "total_sync": float(r.total_value)
             }
         else:
-            # 即使當天有 CSV 數據，我們也可以把 Live Sync 的總值存進去供比對
+            # 以 Live Sync 的數據為最高優先權，覆蓋 CSV 的加總值
+            data_by_date[date_str]["total"] = float(r.total_value)
             data_by_date[date_str]["total_sync"] = float(r.total_value)
 
     # 5. 轉換為列表並按日期排序
     formatted_history = sorted(data_by_date.values(), key=lambda x: x["date"])
     
-    all_keys = set()
-    if formatted_history:
-        all_keys = set(formatted_history[0].keys()) - {"date", "total"}
-        print(f"DEBUG: History Data Keys = {all_keys}")
-        print(f"DEBUG: Sample Row = {formatted_history[0]}")
+    # 6. 收集所有出現過的帳戶 Key (確保前端知道有哪些 Series)
+    all_series_keys = set()
+    for item in formatted_history:
+        keys = set(item.keys()) - {"date", "total"}
+        all_series_keys.update(keys)
+
+    print(f"🚀 [ANALYTICS] History merged: {len(formatted_history)} points, Keys: {all_series_keys}")
 
     return {
         "history": formatted_history,
-        "accounts": list(set(accounts + ["total_sync"]))
+        "accounts": list(all_series_keys)
     }

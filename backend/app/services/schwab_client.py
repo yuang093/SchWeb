@@ -343,28 +343,56 @@ class SchwabClient:
             return {"error": str(e)}
 
     def _sync_real_data_to_db(self, account_hash: str, total_balance: float, cash_balance: float, holdings: List[Dict[str, Any]]):
+        """
+        自動快照 (Auto-Snapshot)
+        將帳戶資產與持倉快照存入資料庫，支援實時更新
+        """
         db = SessionLocal()
         try:
             today = datetime.now().date()
+            
+            # 1. 更新或建立資產歷史 (AssetHistory)
+            # 實作 Upsert 機制
             hist = db.query(AssetHistory).filter(AssetHistory.date == today).first()
             if hist:
-                hist.total_value, hist.cash_balance = total_balance, cash_balance
+                # 這裡目前僅記錄單一帳戶數據。若有多帳戶，建議未來擴充表結構。
+                # 目前維持覆蓋邏輯，確保資產走勢至少能顯示最後一次同步的數值。
+                hist.total_value = total_balance
+                hist.cash_balance = cash_balance
+                print(f"📸 [Auto-Snapshot] Updated AssetHistory for {today} (Value: {total_balance})")
             else:
-                db.add(AssetHistory(date=today, total_value=total_balance, cash_balance=cash_balance))
+                db.add(AssetHistory(
+                    date=today,
+                    total_value=total_balance,
+                    cash_balance=cash_balance
+                ))
+                print(f"📸 [Auto-Snapshot] Saved new AssetHistory for {today} (Value: {total_balance})")
             
+            # 2. 更新持倉快照 (HoldingSnapshot)
+            # 先刪除今日該帳戶的舊紀錄（如果有的話），再寫入新的
+            # 注意：HoldingSnapshot 目前沒有 account_hash 欄位，這會導致多帳戶持倉衝突
+            # 但我們遵照現有結構先確保資料寫入並提交
             db.query(HoldingSnapshot).filter(HoldingSnapshot.date == today).delete()
             for h in holdings:
                 db.add(HoldingSnapshot(
-                    date=today, symbol=h["symbol"], name=h.get("name") or h["symbol"],
-                    quantity=h["quantity"], market_value=h["market_value"],
-                    cost_basis=h["cost_basis"], industry=h.get("sector", "Equity")
+                    date=today,
+                    symbol=h["symbol"],
+                    name=h.get("name") or h["symbol"],
+                    quantity=h["quantity"],
+                    market_value=h["market_value"],
+                    cost_basis=h["cost_basis"],
+                    industry=h.get("sector", "Equity")
                 ))
+            
+            # 3. 務必提交事務
             db.commit()
-            print("✅ [DEBUG] Sync REAL data to DB success.")
+            print(f"✅ [Auto-Snapshot] Database transaction committed successfully for {account_hash[-4:]}")
+            
         except Exception as e:
-            print(f"❌ [ERROR] Sync REAL data to DB fail: {e}")
+            print(f"❌ [Auto-Snapshot] Error during synchronization: {e}")
             db.rollback()
-        finally: db.close()
+        finally:
+            db.close()
 
     def sync_transactions(self, account_hash: str):
         """
