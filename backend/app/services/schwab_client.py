@@ -149,6 +149,23 @@ class SchwabClient:
         except Exception: pass
         return None
 
+    def _save_account_map_to_db(self, account_map: Dict[str, str]):
+        db = SessionLocal()
+        try:
+            mapping_json = json.dumps(account_map)
+            setting = db.query(SystemSetting).filter(SystemSetting.key == "SCHWAB_ACCOUNT_MAP").first()
+            if setting:
+                setting.value = mapping_json
+            else:
+                setting = SystemSetting(key="SCHWAB_ACCOUNT_MAP", value=mapping_json)
+                db.add(setting)
+            db.commit()
+            print(f"✅ [DEBUG] Account Map updated in DB: {list(account_map.keys())}")
+        except Exception as e:
+            print(f"❌ [ERROR] Failed to save account map: {e}")
+        finally:
+            db.close()
+
     def _get_52_week_high(self, data: Dict[str, Any]) -> Optional[float]:
         val = data.get("quote", {}).get("52WeekHigh") or \
               data.get("fundamental", {}).get("high52Week") or \
@@ -204,6 +221,19 @@ class SchwabClient:
             if resp.status_code != 200: return []
             raw_data = resp.json()
             accounts_list = raw_data if isinstance(raw_data, list) else [raw_data]
+            
+            # 準備帳號映射表 (末三碼 -> Hash)
+            account_map = {}
+            for acc in accounts_list:
+                num = str(acc.get("accountNumber", ""))
+                if num:
+                    suffix = num[-3:]
+                    account_map[suffix] = acc.get("hashValue")
+            
+            # 將映射表存入資料庫供 Importer 使用
+            if account_map:
+                self._save_account_map_to_db(account_map)
+
             return [{
                 "account_name": acc.get("accountType", "Schwab Account"),
                 "account_number": acc.get("accountNumber", "XXXX"),
@@ -352,21 +382,24 @@ class SchwabClient:
             today = datetime.now().date()
             
             # 1. 更新或建立資產歷史 (AssetHistory)
-            # 實作 Upsert 機制
-            hist = db.query(AssetHistory).filter(AssetHistory.date == today).first()
+            # 實作 Upsert 機制，改為以 (date, account_id) 為依據進行過濾
+            hist = db.query(AssetHistory).filter(
+                AssetHistory.date == today,
+                AssetHistory.account_id == account_hash
+            ).first()
+            
             if hist:
-                # 這裡目前僅記錄單一帳戶數據。若有多帳戶，建議未來擴充表結構。
-                # 目前維持覆蓋邏輯，確保資產走勢至少能顯示最後一次同步的數值。
                 hist.total_value = total_balance
                 hist.cash_balance = cash_balance
-                print(f"📸 [Auto-Snapshot] Updated AssetHistory for {today} (Value: {total_balance})")
+                print(f"📸 [Auto-Snapshot] Updated AssetHistory for {today} (Account: {account_hash[-4:]}, Value: {total_balance})")
             else:
                 db.add(AssetHistory(
                     date=today,
+                    account_id=account_hash,
                     total_value=total_balance,
                     cash_balance=cash_balance
                 ))
-                print(f"📸 [Auto-Snapshot] Saved new AssetHistory for {today} (Value: {total_balance})")
+                print(f"📸 [Auto-Snapshot] Saved new AssetHistory for {today} (Account: {account_hash[-4:]}, Value: {total_balance})")
             
             # 2. 更新持倉快照 (HoldingSnapshot)
             # 先刪除今日該帳戶的舊紀錄（如果有的話），再寫入新的

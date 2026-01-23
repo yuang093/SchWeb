@@ -10,7 +10,8 @@ class AssetHistory(Base):
     __tablename__ = "asset_history"
 
     id = Column(Integer, primary_key=True, index=True)
-    date = Column(Date, unique=True, index=True, nullable=False)
+    date = Column(Date, index=True, nullable=False)
+    account_id = Column(String, index=True, nullable=True) # 關聯帳戶 ID
     total_value = Column(Float, nullable=False)
     cash_balance = Column(Float, nullable=False)
     daily_profit_loss = Column(Float, nullable=True)

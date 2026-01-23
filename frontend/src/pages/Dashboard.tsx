@@ -54,8 +54,8 @@ export default function Dashboard() {
   });
 
   const { data: history, isLoading: isHistoryLoading } = useQuery({
-    queryKey: ['historicalNetWorth'],
-    queryFn: getHistoricalNetWorth,
+    queryKey: ['historicalNetWorth', selectedAccountHash],
+    queryFn: () => getHistoricalNetWorth(selectedAccountHash),
   });
 
   const { data: positions, isLoading: isPositionsLoading } = useQuery({

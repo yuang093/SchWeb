@@ -40,34 +40,20 @@ class ImporterService:
             except ValueError:
                 return None
 
-    def _get_account_hash_from_filename(self, filename: str) -> Optional[str]:
-        """從檔名識別帳號末三碼並對應 hash"""
-        try:
-            accs = schwab_client.get_linked_accounts()
-            for acc in accs:
-                num_suffix = acc['account_number'][-3:]
-                if num_suffix in filename:
-                    return acc['hash_value']
-        except Exception as e:
-            print(f"Error mapping account from filename {filename}: {e}")
-        
-        # 專案特定 fallback (如有必要)
-        if "323" in filename:
-            return "0BE26F441D89A19F6355BB0D093751CE9B176408561BBD9FEB09A83634FBD991"
-        return None
-
-    def process_csv(self, file_content: bytes, filename: str) -> Dict[str, Any]:
-        """處理上傳的 CSV 內容"""
-        account_hash = self._get_account_hash_from_filename(filename)
-        if not account_hash:
-            return {"success": False, "error": f"無法識別帳戶: {filename}。請確保檔名包含帳號末三碼。"}
-
+    def process_csv(self, file_content: bytes, filename: str, target_account_hash: str) -> Dict[str, Any]:
+        """
+        處理上傳的 CSV 內容。
+        強制使用使用者從前端指定的 target_account_hash，不再進行任何猜測。
+        """
         content_str = file_content.decode('utf-8-sig')
+        
+        print(f"🚀 [IMPORTER] Forced match: File '{filename}' -> Account '{target_account_hash[:8]}...'")
+
         # 簡單判斷是 Transactions 還是 Balances (Positions)
         if "Transactions" in filename or "Action" in content_str:
-            return self._import_transactions(content_str, account_hash)
+            return self._import_transactions(content_str, target_account_hash)
         elif "Balances" in filename or "Market Value" in content_str or "Amount" in content_str:
-            return self._import_balances(content_str, account_hash)
+            return self._import_balances(content_str, target_account_hash)
         else:
             return {"success": False, "error": "無法判斷 CSV 類型 (Transactions 或 Balances)"}
 
@@ -163,7 +149,7 @@ class ImporterService:
     def _import_balances(self, csv_content: str, account_hash: str) -> Dict[str, Any]:
         """
         處理資產歷史匯入 (Balances CSV)
-        將資料寫入 HistoricalBalance 表，並以 account_hash 進行關聯
+        強制將資料寫入使用者指定的 account_hash
         """
         db = SessionLocal()
         count = 0
@@ -180,15 +166,19 @@ class ImporterService:
                 if not date_obj or total_val <= 0:
                     continue
 
+                # 清理 account_hash 確保比對一致
+                clean_hash = str(account_hash).strip()
+
                 # 檢查是否已存在該帳戶在該日期的紀錄 (避免重複匯入)
+                # 務必同時包含 date 和 account_id，防止跨帳號覆蓋
                 existing = db.query(HistoricalBalance).filter(
                     HistoricalBalance.date == date_obj,
-                    HistoricalBalance.account_id == account_hash
+                    HistoricalBalance.account_id == clean_hash
                 ).first()
 
                 if existing:
                     # 如果已存在且數值不同，則更新
-                    if existing.balance != total_val:
+                    if abs(existing.balance - total_val) > 0.01: # 處理浮點數微差
                         existing.balance = total_val
                         count += 1
                     else:
@@ -197,14 +187,14 @@ class ImporterService:
                     # 建立新紀錄
                     db.add(HistoricalBalance(
                         date=date_obj,
-                        account_id=account_hash,
+                        account_id=clean_hash,
                         balance=total_val
                     ))
                     count += 1
 
             # 確保所有變更都提交
             db.commit()
-            print(f"🚀 [IMPORTER] Balances imported: {count} updated/added, {skipped} skipped.")
+            print(f"🚀 [IMPORTER] Balances imported for {clean_hash[:8]}...: {count} updated/added, {skipped} skipped.")
             return {"success": True, "stats": {"history_records": count, "skipped": skipped}}
         except Exception as e:
             print(f"❌ [IMPORTER] Error importing balances: {e}")

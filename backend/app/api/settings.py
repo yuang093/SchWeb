@@ -85,17 +85,23 @@ def update_settings(update_data: SettingsUpdate, db: Session = Depends(get_db)):
 from fastapi import UploadFile, File
 from app.services.importer import importer_service
 
+from fastapi import Form
+
 @router.post("/import-csv")
-async def import_csv(file: UploadFile = File(...)):
+async def import_csv(
+    file: UploadFile = File(...),
+    account_hash: str = Form(...)
+):
     """
-    接收上傳的 CSV 檔案並進行資料匯入
+    接收上傳的 CSV 檔案與目標帳戶 Hash，並進行資料匯入
     """
     if not file.filename.lower().endswith('.csv'):
         raise HTTPException(status_code=400, detail="只支援 CSV 檔案格式")
     
     try:
         content = await file.read()
-        result = importer_service.process_csv(content, file.filename)
+        # 現在將 account_hash 直接傳入，不再讓 importer 猜測
+        result = importer_service.process_csv(content, file.filename, account_hash)
         
         if not result.get("success"):
             raise HTTPException(status_code=400, detail=result.get("error", "匯入失敗"))
@@ -103,3 +109,30 @@ async def import_csv(file: UploadFile = File(...)):
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"伺服器錯誤: {str(e)}")
+
+@router.delete("/reset-history")
+def reset_history(db: Session = Depends(get_db)):
+    """
+    危險操作：清空並重建資產歷史相關資料表 (Live & CSV)
+    這也解決了 Schema 變更後的遷移問題。
+    """
+    try:
+        from app.models.persistence import AssetHistory, HistoricalBalance
+        from app.db.database import engine, Base
+        
+        # 1. 直接刪除表格以確保 Schema 更新
+        AssetHistory.__table__.drop(engine, checkfirst=True)
+        HistoricalBalance.__table__.drop(engine, checkfirst=True)
+        
+        # 2. 重新建立表格
+        Base.metadata.create_all(bind=engine)
+        
+        print(f"🔥 [SYSTEM] History tables dropped and recreated to apply new schema.")
+        return {
+            "success": True,
+            "message": "成功清空歷史資料並重置資料表結構。"
+        }
+    except Exception as e:
+        db.rollback()
+        print(f"❌ [SYSTEM] History reset failed: {e}")
+        raise HTTPException(status_code=500, detail=f"清空失敗: {str(e)}")

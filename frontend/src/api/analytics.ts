@@ -11,7 +11,9 @@ export interface HistoryResponse {
   accounts: string[];
 }
 
-export const getHistoricalNetWorth = async (): Promise<HistoryResponse> => {
-  const response = await api.get('/analytics/history');
+export const getHistoricalNetWorth = async (accountHash?: string): Promise<HistoryResponse> => {
+  const response = await api.get('/analytics/history', {
+    params: { account_hash: accountHash }
+  });
   return response.data;
 };

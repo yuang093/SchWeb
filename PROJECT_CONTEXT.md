@@ -210,4 +210,16 @@ todo_progress.md: 拆解後的任務清單，包含 [ ] Todo, [x] Done, [-] In P
    - [圖表顯示]：後端已合併 Live 與 CSV 歷史數據，走勢圖完整連貫。
    - [自動化]：Live Mode 下，每日資產淨值會自動寫入資料庫，無需手動干預。
 
+## 2026-01-23 - Stage 3: CSV 匯入功能重構 (手動指定帳號)
+1. 策略變更 (Strategy Shift)：
+   - 放棄『智慧配對』與『檔名識別』：因無法涵蓋所有情境且易出錯。
+   - 採納『手動指定 (Explicit Selection)』：匯入時由使用者直接選擇目標帳號。
+2. 全端實作 (Full-Stack Implementation)：
+   - [前端]：在 Settings 頁面新增 Modal 流程，上傳 CSV 前需先從下拉選單選擇嘉信帳號。
+   - [後端]：API 新增接收 account_hash 參數，Importer 邏輯簡化為直接寫入指定帳號。
+   - [資料庫]：確認 AssetHistory 結構已包含 account_id，且 Upsert 邏輯能正確隔離不同帳號的歷史數據。
+3. 錯誤修復 (Fixes)：
+   - 修復 Settings.tsx 中的 Unterminated JSX 語法錯誤。
+   - 解決跨帳號資料覆蓋問題。
+
 
