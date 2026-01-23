@@ -7,6 +7,17 @@ from app.models.persistence import SystemSetting # 確保模型被載入以自�
 
 app = FastAPI(title=settings.PROJECT_NAME, version=settings.VERSION)
 
+# 啟動背景排程器
+@app.on_event("startup")
+async def startup_event():
+    from app.services.task_scheduler import task_scheduler
+    task_scheduler.start()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    from app.services.task_scheduler import task_scheduler
+    task_scheduler.stop()
+
 # 自動建立資料表 (僅限開發環境)
 Base.metadata.create_all(bind=engine)
 

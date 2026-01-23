@@ -350,11 +350,17 @@ class SchwabClient:
             cash_balance = current_balances.get("cashBalance", 0)
             self._sync_real_data_to_db(account_hash, total_balance, cash_balance, holdings)
             
-            # 非同步同步交易紀錄 (股息與已實現損益)
+            # 自動同步最新交易紀錄 (TransactionHistory)
+            try:
+                self.fetch_transactions(account_hash, days=14)
+            except Exception as e:
+                print(f"⚠️ [FETCH] 自動同步交易紀錄失敗: {e}")
+
+            # 非同步同步舊型交易紀錄 (股息與已實現損益)
             try:
                 self.sync_transactions(account_hash)
             except Exception as e:
-                print(f"⚠️ 同步交易紀錄失敗: {e}")
+                print(f"⚠️ 同步股息紀錄失敗: {e}")
 
             return {
                 "accounts": [{
@@ -674,5 +680,90 @@ class SchwabClient:
         except Exception as e:
             print(f"❌ [ERROR] get_price_history 異常 ({symbol}): {e}")
             return None
- 
+
+    def fetch_transactions(self, account_hash: str, days: int = 14) -> int:
+        """
+        API 自動交易同步：抓取過去 N 天的交易紀錄並存入 TransactionHistory 表。
+        使用與 importer.py 一致的去重邏輯，優先使用 activityId。
+        """
+        try:
+            import hashlib
+            from app.models.persistence import TransactionHistory
+            client = self.get_client()
+            db = SessionLocal()
+            
+            try:
+                end_date = datetime.now()
+                start_date = end_date - timedelta(days=days)
+                
+                # print(f"🔄 [FETCH] 正在抓取帳戶 {account_hash[-4:]} 的最新交易 ({start_date.date()} ~ {end_date.date()})")
+                resp = client.get_transactions(account_hash, start_date=start_date, end_date=end_date)
+                
+                if resp.status_code != 200:
+                    print(f"⚠️ [FETCH] API 請求失敗: {resp.text}")
+                    return 0
+
+                transactions = resp.json()
+                if not transactions:
+                    return 0
+
+                added_count = 0
+                for tx in transactions:
+                    # 1. 解析基本資訊
+                    action = str(tx.get("type", "UNKNOWN"))
+                    description = str(tx.get("description", ""))
+                    amount = float(tx.get("netAmount") or 0)
+                    tx_id = str(tx.get("activityId", ""))
+                    
+                    tx_date_str = tx.get("settlementDate") or tx.get("tradeDate")
+                    if not tx_date_str: continue
+                    tx_date = datetime.strptime(tx_date_str[:10], "%Y-%m-%d").date()
+                    
+                    symbol = "CASH"
+                    if "transactionItem" in tx:
+                        symbol = tx["transactionItem"].get("instrument", {}).get("symbol", "CASH")
+                    elif "transferItems" in tx and len(tx["transferItems"]) > 0:
+                        symbol = tx["transferItems"][0].get("instrument", {}).get("symbol", "CASH")
+
+                    # 2. 生成 unique_id (與 importer.py 演算法一致)
+                    # 演算法：hash(date | action | symbol | description | amount | tx_id)
+                    raw_id = f"{tx_date}|{action}|{symbol}|{description}|{amount}|{tx_id}"
+                    unique_id = hashlib.md5(raw_id.encode('utf-8')).hexdigest()
+
+                    # 3. 檢查重複 (優先用 unique_id，若無則用欄位比對防止與 CSV 衝突)
+                    existing = db.query(TransactionHistory).filter(
+                        (TransactionHistory.unique_id == unique_id) |
+                        ((TransactionHistory.account_id == account_hash) &
+                         (TransactionHistory.date == tx_date) &
+                         (TransactionHistory.action == action) &
+                         (TransactionHistory.amount == amount) &
+                         (TransactionHistory.description == description))
+                    ).first()
+
+                    if not existing:
+                        db.add(TransactionHistory(
+                            account_id=account_hash,
+                            date=tx_date,
+                            action=action,
+                            symbol=symbol,
+                            description=description,
+                            amount=amount,
+                            unique_id=unique_id
+                        ))
+                        added_count += 1
+                
+                db.commit()
+                if added_count > 0:
+                    print(f"🔄 [FETCH] Synced {added_count} new transactions for Account ...{account_hash[-4:]}")
+                return added_count
+            except Exception as e:
+                db.rollback()
+                print(f"❌ [FETCH] 處理交易紀錄時發生錯誤: {e}")
+                return 0
+            finally:
+                db.close()
+        except Exception as e:
+            print(f"❌ [FETCH] fetch_transactions 異常: {e}")
+            return 0
+
 schwab_client = SchwabClient()

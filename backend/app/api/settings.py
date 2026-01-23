@@ -117,12 +117,13 @@ def reset_history(db: Session = Depends(get_db)):
     這也解決了 Schema 變更後的遷移問題。
     """
     try:
-        from app.models.persistence import AssetHistory, HistoricalBalance
+        from app.models.persistence import AssetHistory, HistoricalBalance, TransactionHistory
         from app.db.database import engine, Base
         
         # 1. 直接刪除表格以確保 Schema 更新
         AssetHistory.__table__.drop(engine, checkfirst=True)
         HistoricalBalance.__table__.drop(engine, checkfirst=True)
+        TransactionHistory.__table__.drop(engine, checkfirst=True)
         
         # 2. 重新建立表格
         Base.metadata.create_all(bind=engine)

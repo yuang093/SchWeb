@@ -95,3 +95,19 @@ class SystemSetting(Base):
     key = Column(String, primary_key=True, index=True)
     value = Column(String, nullable=False)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+class TransactionHistory(Base):
+    """
+    紀錄完整交易與資金流動紀錄 (從 CSV 匯入)
+    """
+    __tablename__ = "transaction_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    account_id = Column(String, index=True, nullable=False)
+    date = Column(Date, index=True, nullable=False)
+    action = Column(String, index=True) # e.g., Buy, Sell, Journal, Deposit, Wire
+    symbol = Column(String, index=True, nullable=True)
+    description = Column(String)
+    amount = Column(Float, nullable=False)
+    unique_id = Column(String, unique=True, index=True, nullable=False) # 防止重複匯入
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)

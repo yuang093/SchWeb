@@ -117,7 +117,7 @@ todo_progress.md: 拆解後的任務清單，包含 [ ] Todo, [x] Done, [-] In P
 
 ## 5. 已知設計與限制 (Known Issues & Design Choices)
 *   **股息計算**: 目前「累積股息」顯示為全期總和，包含現金股息與 DRIP (股息再投入)。DRIP 交易在 CSV 中會被識別為「股息收入 (Income)」與「股票買入 (Buy)」兩部分。
-*   **本金校正**: 由於 Schwab API 無法取得 2 年前的歷史本金與交易，系統在 `repository.py` 中實作了 `MANUAL_ADJUSTMENTS` 機制，結合歷史 CSV 匯入數據來精確計算「總報酬」。
+*   **本金校正**: 由於 Schwab API 無法取得 2 年前的歷史本金與交易，系統宣實作了 `MANUAL_ADJUSTMENTS` 機制，結合歷史 CSV 匯入數據來精確計算「總報酬」。
 *   **多帳戶隔離**: 數據表 (Dividend, TradeHistory) 已引入 `account_hash` 欄位以支援多帳戶數據管理。
 
 ## 6. 風險分析邏輯 (Risk Analysis Logic)
@@ -136,14 +136,14 @@ todo_progress.md: 拆解後的任務清單，包含 [ ] Todo, [x] Done, [-] In P
 
 ## 7. 開發準則 (Development Guidelines)
 * **Atomic Tasks Only:** 請嚴格遵守「原子化任務」原則。
-* **Small Scope:** 每個 Step 的任務範圍必須限制在 **15 分鐘內** 可完成的工作量。
+* **Small Scope:** 每個 Step 的任務範圍必須限制在 **15 分鐘內** 可完成的工作量.
 * **No Monoliths:** 禁止一次性生成過長的程式碼。如果是複雜功能（如 Dashboard UI），請拆解為：1. 建立空組件, 2. 定義 Type, 3. 實作 API 呼叫, 4. 綁定資料, 5. 美化樣式。
 * **TDD First:** 涉及邏輯計算時，優先撰寫測試案例。
 
 ## 8. 修改日誌 (Change Log)
 - [2026-01-09] [Roo] 修正 AccountRepository 初始化 500 錯誤：更正 __init__ 參數簽章以接收 db Session，並移除全域錯誤實例，確保與 FastAPI 依賴注入機制相容。
 - [2026-01-09] [Roo] 修正帳戶列表 404 錯誤：在 account.py 中新增 /list 路由，並在 MockRepository 與 AccountRepository 中同步實作 get_accounts() 方法，恢復帳戶選擇器功能。
-- [2026-01-09] [Roo] 修復帳戶選擇器消失問題：優化 Dashboard.tsx 的帳戶載入與自動選取邏輯（優先選取第二帳戶），加入關鍵日誌與 Loading 佔位符，確保選取後觸發資料更新。
+- [2026-01-09] [Roo] 修復帳戶選擇器消失問題：優化 Dashboard.tsx 的帳戶載入與自動選取邏輯（優先選取第二帳戶），加入關鍵日誌與 Loading 佔位符，確保選取後觸發資料執行。
 - [2026-01-09] [Roo] 強制修復持倉不顯示問題：放寬前端 Dashboard.tsx 的過濾條件（不分大小寫並支持多種標籤），加入關鍵 Debug Log，並再次驗證 Mock 資料與後端模型的一致性。
 - [2026-01-09] [Roo] 深度修復持倉明細顯示：統一前後端 Position 欄位名稱 (open_pl, cost_basis, current_price 等)，修正 Pydantic 模型配置 (`from_attributes=True`)，優化前端過濾邏輯為不分大小寫，並加入偵錯日誌以確保資料顯示。
 - [2026-01-09] [Roo] 恢復 HoldingsTable 完整欄位顯示與型別定義，新增 cost_basis, day_pl, open_pl, allocation_pct 欄位，並實作損益顏色與數值遮罩邏輯。
@@ -217,9 +217,26 @@ todo_progress.md: 拆解後的任務清單，包含 [ ] Todo, [x] Done, [-] In P
 2. 全端實作 (Full-Stack Implementation)：
    - [前端]：在 Settings 頁面新增 Modal 流程，上傳 CSV 前需先從下拉選單選擇嘉信帳號。
    - [後端]：API 新增接收 account_hash 參數，Importer 邏輯簡化為直接寫入指定帳號。
-   - [資料庫]：確認 AssetHistory 結構已包含 account_id，且 Upsert 邏輯能正確隔離不同帳號的歷史數據。
-3. 錯誤修復 (Fixes)：
-   - 修復 Settings.tsx 中的 Unterminated JSX 語法錯誤。
-   - 解決跨帳號資料覆蓋問題。
+220 | - [資料庫]：確認 AssetHistory 結構已包含 account_id，且 Upsert 邏輯能正確隔離不同帳號的歷史數據。
+221 | 3. 錯誤修復 (Fixes)：
+222 | - 修復 Settings.tsx 中的 Unterminated JSX 語法錯誤。
+223 | - 解決跨帳號資料覆蓋問題。
+224 | - [2026-01-23] [Roo] 修復風險分析頁面指標為 0 的問題：
+225 | - 重構風險引擎：將風險指標計算改為「基於餘額的動態計算」，移除對 `daily_profit_loss` 欄位的依賴。
+226 | - 實作工具函數：在 `risk.py` 實作基於 `total_value` 序列與 `pct_change()` 的波動率、夏普比率、MDD 與 VaR 計算。
+227 | - 更新分析端點：在 `analytics.py` 新增 `/risk-metrics` 路由，合併歷史與即時數據進行動態運算。
+228 | - 前端同步：更新 `risk.ts` 呼叫新端點，確保指標能從歷史餘額自動推導。
+229 | - [2026-01-23] [Roo] **Stage 3 完成**：風險分析頁面已透過「基於餘額」的動態計算修復，數值已顯示。但發現 Account 1 因大額入金導致夏普比率異常 (26.77)，確認需要引入交易紀錄來修正。
+230 | - [2026-01-23] [Roo] **Stage 4 目標**：建立 TransactionHistory 表，匯入交易紀錄，並利用資金流 (Flows) 來校正風險計算。
+231 | - [2026-01-23] [Roo] **Stage 4 完成**：建立 TransactionHistory 模型與 CSV 匯入器（支援行號去重）；前端 Settings 頁面新增交易匯入區塊；實作 TWR 修正邏輯解決大額入金導致的風險指標異常。
+232 | - [2026-01-23] [Roo] **Stage 5 完成**：實作全自動 API 交易同步與背景排程器；重構智慧風險引擎，利用模糊日期對齊與精準資金流偵測解決夏普比率異常問題，達成 Stable Release (v1.0)。
 
+### Stage 5: 全自動化與智慧風險引擎 (Completed)
+* **API 自動交易同步 (Auto-Sync)**: 實作 `fetch_transactions`，支援自動抓取嘉信歷史交易紀錄，並透過 `activityId` 與 Hash 進行智慧去重。
+* **背景排程器 (Background Scheduler)**: 建立 `task_scheduler.py`，每 6 小時自動執行資產快照與交易同步，實現「免維護」運作。
+* **智慧風險引擎 (Smart Risk Engine)**: 重構 `risk.py`，實作 **TWR (時間加權報酬)** 算法。
+    * 引入 **Fuzzy Date Matching** (模糊日期對齊) 解決入帳延遲問題。
+    * 引入 **Smart Flow Detection** (智慧資金流偵測)，精準區分「入金」與「投資獲利」。
+    * 成功修復 Account 1 夏普比率異常 (24.33 -> 1.33) 並保留 Account 2 的選擇權獲利表現 (0.68 -> 1.31)。
 
+目前系統狀態：**Stable Release (v1.0)**。

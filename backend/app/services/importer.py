@@ -1,11 +1,15 @@
 import csv
 import io
 import os
+import hashlib
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
 from sqlalchemy.orm import Session
 from app.db.database import SessionLocal
-from app.models.persistence import Dividend, TradeHistory, AssetHistory, HoldingSnapshot, HistoricalBalance
+from app.models.persistence import (
+    Dividend, TradeHistory, AssetHistory, HoldingSnapshot,
+    HistoricalBalance, TransactionHistory
+)
 from app.services.schwab_client import schwab_client
 
 class ImporterService:
@@ -51,7 +55,16 @@ class ImporterService:
 
         # 簡單判斷是 Transactions 還是 Balances (Positions)
         if "Transactions" in filename or "Action" in content_str:
-            return self._import_transactions(content_str, target_account_hash)
+            # 同時匯入舊有的 TradeHistory/Dividend 以及新的 TransactionHistory
+            res1 = self._import_transactions(content_str, target_account_hash)
+            res2 = self.import_transactions_csv(content_str, target_account_hash)
+            
+            if not res1["success"]: return res1
+            if not res2["success"]: return res2
+            
+            # 合併統計
+            res1["stats"].update({"transaction_history": res2["stats"]["added"]})
+            return res1
         elif "Balances" in filename or "Market Value" in content_str or "Amount" in content_str:
             return self._import_balances(content_str, target_account_hash)
         else:
@@ -199,6 +212,62 @@ class ImporterService:
         except Exception as e:
             print(f"❌ [IMPORTER] Error importing balances: {e}")
             db.rollback()
+            return {"success": False, "error": str(e)}
+        finally:
+            db.close()
+
+    def import_transactions_csv(self, csv_content: str, target_account_hash: str) -> Dict[str, Any]:
+        """
+        匯入完整交易紀錄到 TransactionHistory 表。
+        """
+        db = SessionLocal()
+        stats = {"added": 0, "skipped": 0, "errors": 0}
+        try:
+            reader = csv.DictReader(io.StringIO(csv_content))
+
+            for i, row in enumerate(reader):
+                date_str = row.get('Date')
+                action = row.get('Action', '').strip()
+                symbol = row.get('Symbol', '').strip()
+                description = row.get('Description', '').strip()
+                amount = self._parse_amount(row.get('Amount'))
+                
+                if not date_str or not action:
+                    continue
+                
+                date_obj = self._parse_date(date_str)
+                if not date_obj:
+                    continue
+
+                # 生成 unique_id 防止重複匯入
+                # 嘉信 CSV 沒給 ID，我們用 (Date, Action, Symbol, Description, Amount, RowIndex) 的 Hash
+                # 加入 row index (i) 是為了處理同一天完全相同的多筆分錄 (例如 Journal 0.0)
+                raw_id = f"{date_obj}|{action}|{symbol}|{description}|{amount}|{i}"
+                unique_id = hashlib.md5(raw_id.encode('utf-8')).hexdigest()
+
+                existing = db.query(TransactionHistory).filter(
+                    TransactionHistory.unique_id == unique_id
+                ).first()
+
+                if not existing:
+                    db.add(TransactionHistory(
+                        account_id=target_account_hash,
+                        date=date_obj,
+                        action=action,
+                        symbol=symbol,
+                        description=description,
+                        amount=amount,
+                        unique_id=unique_id
+                    ))
+                    stats["added"] += 1
+                else:
+                    stats["skipped"] += 1
+
+            db.commit()
+            return {"success": True, "stats": stats}
+        except Exception as e:
+            db.rollback()
+            print(f"❌ [IMPORTER] Error in import_transactions_csv: {e}")
             return {"success": False, "error": str(e)}
         finally:
             db.close()

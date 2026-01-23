@@ -25,6 +25,7 @@ export default function Settings() {
     stats?: any;
     error?: string;
     filename?: string;
+    type?: 'balances' | 'transactions';
   } | null>(null);
 
   const [isResetting, setIsResetting] = useState(false);
@@ -160,7 +161,7 @@ export default function Settings() {
     }
   };
 
-  const onDrop = useCallback(async (acceptedFiles: File[]) => {
+  const onDropBalances = useCallback(async (acceptedFiles: File[]) => {
     if (acceptedFiles.length === 0) return;
     
     if (!targetAccountHash) {
@@ -177,7 +178,8 @@ export default function Settings() {
       setImportResult({
         success: true,
         stats: result.stats,
-        filename: file.name
+        filename: file.name,
+        type: 'balances'
       });
     } catch (error: any) {
       setImportResult({
@@ -190,11 +192,44 @@ export default function Settings() {
     }
   }, [targetAccountHash]);
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: {
-      'text/csv': ['.csv']
-    },
+  const onDropTransactions = useCallback(async (acceptedFiles: File[]) => {
+    if (acceptedFiles.length === 0) return;
+    if (!targetAccountHash) {
+      alert('請先選擇目標帳戶');
+      return;
+    }
+    const file = acceptedFiles[0];
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const result = await importCsv(file, targetAccountHash);
+      setImportResult({
+        success: true,
+        stats: result.stats,
+        filename: file.name,
+        type: 'transactions'
+      });
+    } catch (error: any) {
+      setImportResult({
+        success: false,
+        error: error.response?.data?.detail || '檔案處理失敗',
+        filename: file.name,
+        type: 'transactions'
+      });
+    } finally {
+      setImporting(false);
+    }
+  }, [targetAccountHash]);
+
+  const { getRootProps: getRootPropsBalances, getInputProps: getInputPropsBalances, isDragActive: isDragActiveBalances } = useDropzone({
+    onDrop: onDropBalances,
+    accept: { 'text/csv': ['.csv'] },
+    multiple: false
+  });
+
+  const { getRootProps: getRootPropsTransactions, getInputProps: getInputPropsTransactions, isDragActive: isDragActiveTransactions } = useDropzone({
+    onDrop: onDropTransactions,
+    accept: { 'text/csv': ['.csv'] },
     multiple: false
   });
 
@@ -396,13 +431,13 @@ export default function Settings() {
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-white">資料匯入 (CSV Import)</h3>
-                  <p className="text-sm text-slate-500">上傳嘉信匯出的 Transactions 或 Balances CSV 檔案</p>
+                  <p className="text-sm text-slate-500">上傳嘉信匯出的資產或交易紀錄 CSV</p>
                 </div>
               </div>
             </div>
 
-            <div className="p-6 space-y-6">
-              {/* 帳戶選擇器 */}
+            <div className="p-6 space-y-8">
+              {/* 帳戶選擇器 (共用) */}
               <div className="bg-slate-950/50 border border-slate-800 rounded-xl p-4 space-y-3">
                 <label className="flex items-center gap-2 text-sm font-medium text-slate-400">
                   <User size={14} className="text-blue-500" />
@@ -425,30 +460,57 @@ export default function Settings() {
                 </select>
               </div>
 
-              {/* 上傳區 */}
-              <div className="bg-slate-950/50 border border-slate-800 rounded-xl p-4 space-y-3">
-                <label className="flex items-center gap-2 text-sm font-medium text-slate-400">
-                  <FileText size={14} className="text-emerald-500" />
-                  2. 上傳 CSV 檔案
-                </label>
-                <div
-                  {...getRootProps()}
-                  className={`border-2 border-dashed rounded-xl p-8 text-center transition-all cursor-pointer
-                    ${isDragActive ? 'border-blue-500 bg-blue-500/5' : 'border-slate-800 hover:border-slate-700 bg-slate-950/50'}
-                    ${importing ? 'opacity-50 pointer-events-none' : ''}`}
-                >
-                  <input {...getInputProps()} />
-                  <div className="flex flex-col items-center gap-4">
-                    <div className="w-12 h-12 bg-slate-900 rounded-full flex items-center justify-center text-slate-400">
-                      {importing ? <Loader2 size={24} className="animate-spin text-blue-500" /> : <FileText size={24} />}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* 匯入資產走勢 */}
+                <div className="space-y-3">
+                  <label className="flex items-center gap-2 text-sm font-medium text-slate-400">
+                    <FileText size={14} className="text-emerald-500" />
+                    2a. 匯入歷史資產 (Balances)
+                  </label>
+                  <div
+                    {...getRootPropsBalances()}
+                    className={`border-2 border-dashed rounded-xl p-6 text-center transition-all cursor-pointer h-48 flex flex-col items-center justify-center
+                      ${isDragActiveBalances ? 'border-blue-500 bg-blue-500/5' : 'border-slate-800 hover:border-slate-700 bg-slate-950/50'}
+                      ${importing ? 'opacity-50 pointer-events-none' : ''}`}
+                  >
+                    <input {...getInputPropsBalances()} />
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="w-10 h-10 bg-slate-900 rounded-full flex items-center justify-center text-slate-400">
+                        {importing && importResult?.type === 'balances' ? <Loader2 size={20} className="animate-spin text-blue-500" /> : <FileText size={20} />}
+                      </div>
+                      <div>
+                        <p className="text-white text-sm font-medium">上傳 Balances CSV</p>
+                        <p className="text-[10px] text-slate-500 mt-1">
+                          用於繪製歷史淨值走勢
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-white font-medium">
-                        {importing ? '正在處理檔案...' : '點擊或拖拽 CSV 檔案至此處'}
-                      </p>
-                      <p className="text-sm text-slate-500 mt-1">
-                        支援 Transactions_*.csv 或 Balances_*.csv
-                      </p>
+                  </div>
+                </div>
+
+                {/* 匯入交易紀錄 */}
+                <div className="space-y-3">
+                  <label className="flex items-center gap-2 text-sm font-medium text-slate-400">
+                    <Send size={14} className="text-blue-500" />
+                    2b. 匯入交易紀錄 (Transactions)
+                  </label>
+                  <div
+                    {...getRootPropsTransactions()}
+                    className={`border-2 border-dashed rounded-xl p-6 text-center transition-all cursor-pointer h-48 flex flex-col items-center justify-center
+                      ${isDragActiveTransactions ? 'border-blue-500 bg-blue-500/5' : 'border-slate-800 hover:border-slate-700 bg-slate-950/50'}
+                      ${importing ? 'opacity-50 pointer-events-none' : ''}`}
+                  >
+                    <input {...getInputPropsTransactions()} />
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="w-10 h-10 bg-slate-900 rounded-full flex items-center justify-center text-slate-400">
+                        {importing && importResult?.type === 'transactions' ? <Loader2 size={20} className="animate-spin text-blue-500" /> : <Upload size={20} />}
+                      </div>
+                      <div>
+                        <p className="text-white text-sm font-medium">上傳 Transactions CSV</p>
+                        <p className="text-[10px] text-slate-500 mt-1">
+                          用於校正風險指標與本金
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -490,6 +552,12 @@ export default function Settings() {
                           <div className="bg-slate-950/50 p-2 rounded border border-slate-800 col-span-2">
                             <p className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">跳過重複筆數</p>
                             <p className="text-sm text-slate-400">{importResult.stats.skipped}</p>
+                          </div>
+                        )}
+                        {importResult.stats.transaction_history !== undefined && (
+                          <div className="bg-slate-950/50 p-2 rounded border border-slate-800 col-span-2">
+                            <p className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">交易紀錄 (TransactionHistory)</p>
+                            <p className="text-lg text-white font-mono">{importResult.stats.transaction_history} 筆</p>
                           </div>
                         )}
                       </div>

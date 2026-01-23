@@ -11,7 +11,8 @@ export interface RiskMetrics {
 }
 
 export const getRiskMetrics = async (accountHash?: string): Promise<RiskMetrics> => {
-  const response = await api.get<RiskMetrics>('/risk/metrics', {
+  // 將請求指向 analytics 模組下的 risk-metrics 端點
+  const response = await api.get<RiskMetrics>('/analytics/risk-metrics', {
     params: { account_hash: accountHash }
   });
   return response.data;
